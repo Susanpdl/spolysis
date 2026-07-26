@@ -1,0 +1,48 @@
+{
+  "_comment": "Reference clip catalog. R2 keys match what lookup.py checks: clips/{stroke_type}/canonical.mp4 and clips/{stroke_type}/{fault_label}.mp4",
+  "version": 1,
+  "clips": {
+    "forehand": {
+      "canonical": {
+        "r2_key": "clips/forehand/canonical.mp4",
+        "description": "Classic closed-stance forehand with full hip rotation and high follow-through",
+        "source": "curated_pro"
+      },
+      "fault_clips": {
+        "arm_only": { "r2_key": "clips/forehand/arm_only.mp4" },
+        "low_follow_through": { "r2_key": "clips/forehand/low_follow_through.mp4" },
+        "late_contact": { "r2_key": "clips/forehand/late_contact.mp4" }
+      }
+    },
+    "backhand": {
+      "canonical": {
+        "r2_key": "clips/backhand/canonical.mp4",
+        "description": "Two-handed backhand with shoulder rotation and weight transfer",
+        "source": "curated_pro"
+      },
+      "fault_clips": {
+        "arm_only": { "r2_key": "clips/backhand/arm_only.mp4" },
+        "open_stance": { "r2_key": "clips/backhand/open_stance.mp4" }
+      }
+    },
+    "serve": {
+      "canonical": {
+        "r2_key": "clips/serve/canonical.mp4",
+        "description": "Flat first serve with full trophy pose, pronation, and kinetic chain",
+        "source": "curated_pro"
+      },
+      "fault_clips": {
+        "low_follow_through": { "r2_key": "clips/serve/low_follow_through.mp4" },
+        "arm_only": { "r2_key": "clips/serve/arm_only.mp4" }
+      }
+    },
+    "volley": {
+      "canonical": {
+        "r2_key": "clips/volley/canonical.mp4",
+        "description": "Compact forehand volley with continental grip and short punch motion",
+        "source": "curated_pro"
+      },
+      "fault_clips": {}
+    }
+  }
+}

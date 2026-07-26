@@ -1,0 +1,69 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Model weights (download separately - see pipeline/README.md)
+pipeline/weights/
+pipeline/models/checkpoints/
+*.pth
+*.onnx
+*.pt
+
+# Node / React Native
+node_modules/
+app/node_modules/
+.expo/
+.expo-shared/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
+android/
+ios/
+
+# Expo EAS
+.eas/
+
+# Data (large files tracked via R2, not git)
+data/raw/
+data/videos/
+data/clips/*.mp4
+data/clips/*.mov
+
+# R2 / artifact cache
+*.npz
+*.npy
+artifacts/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Logs
+*.log
+logs/
+
+# Temporal
+temporal-data/

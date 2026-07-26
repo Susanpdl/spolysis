@@ -1,0 +1,47 @@
+{
+  "_comment": "Schema for ST-GCN training label JSONL files. Each line in a .jsonl file under data/labels/ must match this shape.",
+  "version": 1,
+  "label_file_format": "jsonl",
+  "label_file_glob": "data/labels/*.jsonl",
+  "record_schema": {
+    "video_path": {
+      "type": "string",
+      "description": "Path to source video relative to project root, or R2 key if remote"
+    },
+    "stroke_type": {
+      "type": "string",
+      "enum": ["forehand", "backhand", "serve", "volley"],
+      "description": "Ground-truth stroke classification"
+    },
+    "fault_label": {
+      "type": "string",
+      "enum": ["none", "arm_only", "late_contact", "low_follow_through", "open_stance"],
+      "description": "Primary fault. 'none' means technically sound stroke."
+    },
+    "segment_start_frame": {
+      "type": "integer",
+      "description": "0-indexed frame number where the stroke swing begins (optional, used to override auto-segmentation)"
+    },
+    "segment_end_frame": {
+      "type": "integer",
+      "description": "0-indexed frame number where the stroke swing ends (optional)"
+    },
+    "annotator": {
+      "type": "string",
+      "description": "Who labeled this record (professor, auto, or annotator name)"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Free-text annotation notes"
+    }
+  },
+  "example_record": {
+    "video_path": "data/raw/player_01_forehand_01.mp4",
+    "stroke_type": "forehand",
+    "fault_label": "arm_only",
+    "segment_start_frame": 45,
+    "segment_end_frame": 135,
+    "annotator": "professor",
+    "notes": "Classic arm-only pattern, hip barely moves"
+  }
+}

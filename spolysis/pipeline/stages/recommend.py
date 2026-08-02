@@ -56,28 +56,27 @@ FAULT_RULES: dict[str, dict] = {
     },
 }
 
-CLAUDE_PROMPT = """\
-You are a professional tennis coach reviewing a player's stroke analysis. \
-The following specific biomechanical fault was detected:
+def _build_fault_rules_text() -> str:
+    lines = []
+    for label, rule in FAULT_RULES.items():
+        lines.append(
+            f"- {label}: {rule['finding']}. Ideal: {rule['ideal']}. "
+            f"Drill: {rule['drill']}. Severity: {rule['severity']}."
+        )
+    return "\n".join(lines)
 
-Fault: {fault_label}
-What was observed: {finding}
-What should happen: {ideal}
-Suggested drill: {drill}
+_SYSTEM_PROMPT = f"""\
+You are a professional tennis coach giving concise, actionable feedback after watching a player hit.
 
-Write 2-3 sentences of encouraging, specific coaching advice. \
-Be concrete - name the exact body part and action to change. \
-Include the drill in an actionable way. \
-Under 65 words total. \
-Do not mention AI, algorithms, video, or analysis software. \
-Write as if you just watched the player hit.\
-"""
+Known fault patterns and their fixes:
+{_build_fault_rules_text()}
 
-NO_FAULT_PROMPT = """\
-You are a professional tennis coach. A player just hit a {stroke_type} stroke that \
-was technically sound - no major faults detected. \
-Write 2 sentences of positive reinforcement and one small refinement tip to keep improving. \
-Under 50 words. Do not mention AI, algorithms, or analysis.\
+Output rules:
+- If a fault is detected: 2-3 sentences. Name the exact body part and action to change. Include the drill.
+- If no fault: 2 sentences of positive reinforcement + one refinement tip.
+- Always under 65 words.
+- Do not mention AI, algorithms, video analysis, or software.
+- Write as if you just watched the player on court.\
 """
 
 
@@ -86,38 +85,54 @@ def generate_recommendation(
     fault_label: str | None,
     confidence: float,
 ) -> str:
-    """
-    Generate a coaching recommendation using rules + Claude API.
-    """
     client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
     if fault_label and fault_label in FAULT_RULES:
         rule = FAULT_RULES[fault_label]
-        prompt = CLAUDE_PROMPT.format(
-            fault_label=fault_label.replace("_", " ").title(),
-            finding=rule["finding"],
-            ideal=rule["ideal"],
-            drill=rule["drill"],
+        user_message = (
+            f"Stroke: {stroke_type}. "
+            f"Fault detected: {fault_label.replace('_', ' ')} (confidence {confidence:.0%}). "
+            f"Observed: {rule['finding']}."
         )
     elif fault_label:
-        # Unknown fault - generate generic advice
-        prompt = f"You are a tennis coach. The player's {stroke_type} has a technical issue with {fault_label.replace('_', ' ')}. Write 2-3 sentences of specific improvement advice. Under 60 words."
+        user_message = (
+            f"Stroke: {stroke_type}. "
+            f"Fault detected: {fault_label.replace('_', ' ')} (confidence {confidence:.0%}). "
+            f"Give 2-3 sentences of specific improvement advice."
+        )
     else:
-        prompt = NO_FAULT_PROMPT.format(stroke_type=stroke_type)
+        user_message = (
+            f"Stroke: {stroke_type}. "
+            f"No significant fault detected (confidence {confidence:.0%}). "
+            f"Give positive reinforcement and one refinement tip."
+        )
 
     log.info("calling_claude_api", fault=fault_label, stroke=stroke_type)
     try:
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=150,
-            messages=[{"role": "user", "content": prompt}],
+            system=[
+                {
+                    "type": "text",
+                    "text": _SYSTEM_PROMPT,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+            messages=[{"role": "user", "content": user_message}],
         )
         text = message.content[0].text.strip()
-        log.info("claude_recommendation_generated", chars=len(text))
+        usage = message.usage
+        log.info(
+            "claude_recommendation_generated",
+            chars=len(text),
+            input_tokens=usage.input_tokens,
+            cache_read_tokens=getattr(usage, "cache_read_input_tokens", 0),
+            cache_write_tokens=getattr(usage, "cache_creation_input_tokens", 0),
+        )
         return text
     except Exception as e:
         log.error("claude_api_failed", error=str(e))
-        # Fallback to rule-based text
         if fault_label and fault_label in FAULT_RULES:
             rule = FAULT_RULES[fault_label]
             return f"{rule['finding']}. {rule['ideal']}. Try this: {rule['drill']}."

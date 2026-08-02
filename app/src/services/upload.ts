@@ -1,5 +1,3 @@
-import { api } from './api';
-
 function putToR2(
   uri: string,
   url: string,
@@ -37,14 +35,3 @@ export const uploadService = {
   upload: (uri: string, url: string, onProgress?: (progress: number) => void) =>
     putToR2(uri, url, onProgress),
 };
-
-export async function uploadVideoToR2(
-  videoUri: string,
-  tier: 'free' | 'premium',
-  onProgress?: (progress: number) => void,
-): Promise<{ job_id: string }> {
-  const filename = `recording_${Date.now()}.mp4`;
-  const { upload_url, job_id } = await api.uploads.getUrl(tier, filename);
-  await putToR2(videoUri, upload_url, onProgress);
-  return { job_id };
-}

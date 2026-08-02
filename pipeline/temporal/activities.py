@@ -113,7 +113,7 @@ async def extract_features_activity(keypoints_r2_key: str, job_id: str) -> str:
 @activity.defn
 async def classify_activity(features_r2_key: str, job_id: str) -> dict:
     """Segment and classify stroke. Returns classification dict."""
-    from pipeline.stages.features import FeatureSet, extract_features
+    from pipeline.stages.features import extract_features
     from pipeline.stages.segment import segment_strokes
     from pipeline.stages.classify import classify_stroke
     from pipeline.r2 import get_json
@@ -127,7 +127,11 @@ async def classify_activity(features_r2_key: str, job_id: str) -> dict:
     if segment is None:
         return {"stroke_type": "forehand", "fault_label": None, "confidence": 0.5, "method": "heuristic"}
 
-    result = classify_stroke(segment)
+    result = classify_stroke(
+        segment,
+        stroke_model_path=settings.posec3d_stroke_model,
+        fault_model_path=settings.posec3d_fault_model,
+    )
     return {
         "stroke_type": result.stroke_type,
         "fault_label": result.fault_label,

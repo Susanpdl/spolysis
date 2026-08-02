@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     api_base_url: str = "https://api.spolysis.com"
     internal_api_secret: str
 
+    # PoseC3D model checkpoints - local paths or R2-downloaded paths.
+    # When None, the heuristic classifier is used as fallback.
+    posec3d_stroke_model: str | None = None
+    posec3d_fault_model: str | None = None
+
     sentry_dsn: str = ""
 
 

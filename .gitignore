@@ -44,8 +44,9 @@ ios/
 # Data (large files tracked via R2, not git)
 data/raw/
 data/videos/
-data/clips/*.mp4
-data/clips/*.mov
+data/clips/**/*.mp4
+data/clips/**/*.mov
+data/clips/reference/
 data/tennis-mocap/
 data/reference_motion/
 SportsPose.zip

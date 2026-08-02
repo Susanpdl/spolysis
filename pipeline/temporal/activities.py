@@ -18,6 +18,7 @@ class WorkflowParams:
     tier: str
 
 
+@activity.defn
 async def _notify_api(path: str, body: dict) -> None:
     url = f"{settings.api_base_url}{path}"
     headers = {"Authorization": f"Bearer {settings.internal_api_secret}"}
@@ -113,15 +114,25 @@ async def extract_features_activity(keypoints_r2_key: str, job_id: str) -> str:
 @activity.defn
 async def classify_activity(features_r2_key: str, job_id: str) -> dict:
     """Segment and classify stroke. Returns classification dict."""
-    from pipeline.stages.features import extract_features
+    from pipeline.stages.features import FeatureSet
     from pipeline.stages.segment import segment_strokes
     from pipeline.stages.classify import classify_stroke
+    from pipeline.utils.skeleton import compute_joint_angles
     from pipeline.r2 import get_json
 
     data = get_json(features_r2_key)
-    keypoints = np.array(data["keypoints_norm"], dtype=np.float32)
+    keypoints_norm = np.array(data["keypoints_norm"], dtype=np.float32)
+    wrist_vel = np.array(data["wrist_velocity"], dtype=np.float32)
+    T = keypoints_norm.shape[0]
 
-    features = extract_features(keypoints)
+    angles_list = [compute_joint_angles(keypoints_norm[t, :, :2]) for t in range(T)]
+    features = FeatureSet(
+        keypoints_norm=keypoints_norm,
+        velocities=np.zeros((T, 17), dtype=np.float32),
+        wrist_velocity_smooth=wrist_vel,
+        joint_angles_per_frame=angles_list,
+        frame_count=T,
+    )
     segment = segment_strokes(features)
 
     if segment is None:

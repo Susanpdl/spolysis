@@ -6,8 +6,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     supabase_url: str
-    supabase_anon_key: str
     supabase_service_key: str
+    supabase_jwt_secret: str
 
     r2_account_id: str
     r2_access_key_id: str

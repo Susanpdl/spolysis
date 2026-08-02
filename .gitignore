@@ -46,6 +46,9 @@ data/raw/
 data/videos/
 data/clips/*.mp4
 data/clips/*.mov
+data/tennis-mocap/
+data/reference_motion/
+SportsPose.zip
 
 # R2 / artifact cache
 *.npz

@@ -9,9 +9,10 @@
         "source": "curated_pro"
       },
       "fault_clips": {
-        "arm_only": { "r2_key": "clips/forehand/arm_only.mp4" },
+        "late_contact": { "r2_key": "clips/forehand/late_contact.mp4" },
+        "open_stance": { "r2_key": "clips/forehand/open_stance.mp4" },
         "low_follow_through": { "r2_key": "clips/forehand/low_follow_through.mp4" },
-        "late_contact": { "r2_key": "clips/forehand/late_contact.mp4" }
+        "arm_only": { "r2_key": "clips/forehand/arm_only.mp4" }
       }
     },
     "backhand": {
@@ -21,8 +22,9 @@
         "source": "curated_pro"
       },
       "fault_clips": {
-        "arm_only": { "r2_key": "clips/backhand/arm_only.mp4" },
-        "open_stance": { "r2_key": "clips/backhand/open_stance.mp4" }
+        "late_contact": { "r2_key": "clips/backhand/late_contact.mp4" },
+        "low_follow_through": { "r2_key": "clips/backhand/low_follow_through.mp4" },
+        "grip_issue": { "r2_key": "clips/backhand/grip_issue.mp4" }
       }
     },
     "serve": {
@@ -32,7 +34,8 @@
         "source": "curated_pro"
       },
       "fault_clips": {
-        "low_follow_through": { "r2_key": "clips/serve/low_follow_through.mp4" },
+        "no_trophy_position": { "r2_key": "clips/serve/no_trophy_position.mp4" },
+        "low_toss": { "r2_key": "clips/serve/low_toss.mp4" },
         "arm_only": { "r2_key": "clips/serve/arm_only.mp4" }
       }
     },
@@ -42,7 +45,10 @@
         "description": "Compact forehand volley with continental grip and short punch motion",
         "source": "curated_pro"
       },
-      "fault_clips": {}
+      "fault_clips": {
+        "late_contact": { "r2_key": "clips/volley/late_contact.mp4" },
+        "open_stance": { "r2_key": "clips/volley/open_stance.mp4" }
+      }
     }
   }
 }

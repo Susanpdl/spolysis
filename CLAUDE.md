@@ -41,8 +41,8 @@ Hard rules:
 | App CI/CD | Expo EAS (Application Services) | Automated builds and OTA updates for React Native |
 | On-device recording check | ML Kit Pose Detection (live, both platforms) | Live green-state gate before recording is allowed; full body must be visible and correctly framed |
 | 2D pose estimation (server) | RTMPose-x via MMPose | Maximum-accuracy variant; permissive license. Do NOT use YOLO pose (AGPL license). Do NOT use BlazePose server-side (degrades on fast tennis motion) |
-| Stroke / fault classification | ST-GCN with pretrained NTU RGB+D weights, fine-tuned on tennis data | Exploits skeleton graph structure; transfers well from pretrained action-recognition weights; skip Temporal CNN |
-| 3D pose lifting | MotionBERT and PoseMamba both benchmarked on the professor's tennis data; winner deploys to production | Both are regression-based (fast inference). Fine-tune both; the one with better accuracy on tennis motion wins |
+| Stroke / fault classification | PoseC3D via MMAction2, fine-tuned on tennis data | Input: stacked 2D heatmap volumes from RTMPose-x - uses the full heatmap signal (not collapsed coordinates), making it more robust to occlusion and viewpoint variation. Same MMAction2/MMPose ecosystem as the rest of the pose pipeline. Do NOT use ST-GCN (coordinate-only input loses confidence signal). Training data: THETIS (8,374 clips, 12 stroke types) + Tennis-MoCap (weak fault labels from joint angle deltas between regular and high-performance players). Heuristic rule-based fallback active at launch while training set is assembled. All 4 stroke types (forehand, backhand, serve, volley) and all fault types supported from day one. |
+| 3D pose lifting | MotionBERT and PoseMamba fine-tuned on SportsPose tennis sequences; winner deploys to production | Both are regression-based (fast inference). Fine-tune both on SportsPose tennis data (131 sequences, 24 subjects, COCO 17-joint format, Qualisys-validated 3D ground truth, 90 fps). The one with better accuracy on tennis motion wins. |
 | Temporal smoothing | Savitzky-Golay (SciPy) preprocessing pass, then SmoothNet | SmoothNet understands human motion structure and gives best overlay quality; Savitzky-Golay removes gross noise first |
 | Stroke segmentation | Heuristic wrist speed peaks for swing detection | Robust for racket sports; no training data needed |
 | Temporal alignment | Keyframe-anchored DTW (anchor at wrist velocity peak / contact; constrained DTW on each side; Sakoe-Chiba band) | Libraries: dtaidistance or tslearn |
@@ -95,7 +95,7 @@ video upload (signed URL to R2)
 ```
 feature extraction (joint angles, velocities, normalized positions)
 → stroke segmentation (wrist velocity peaks)
-→ ST-GCN classification (stroke type + fault label)
+→ PoseC3D classification (stroke type + fault label)
 → reference clip lookup
 → rules-based findings + Claude API phrasing
 → results DB
@@ -161,7 +161,7 @@ flowchart TD
   subgraph FREE["2D free tier"]
     F1["Feature extraction\njoint angles, velocities, positions"]
     F2["Stroke segmentation\nvelocity peak detection"]
-    F3["ST-GCN classification\nstroke type + fault label"]
+    F3["PoseC3D classification\nstroke type + fault label"]
     F4["Reference clip lookup"]
     F5["Rules-based findings\nClaude API phrasing"]
     F1 --> F2 --> F3
@@ -210,12 +210,13 @@ flowchart TD
 Work strictly in this order. Each phase must be demoable on a real device before the next starts.
 
 **Phase 1 - 2D free tier, end to end.**
-React Native app with ML Kit guided recording, upload, and results screen; FastAPI + Temporal backend; Fly.io deployment; R2 storage; RTMPose-x keypoints; ST-GCN classifier trained on professor's labeled data; clip lookup; rules-based + Claude API text output; RevenueCat paywall structure in place.
+React Native app with ML Kit guided recording, upload, and results screen; FastAPI + Temporal backend; Fly.io deployment; R2 storage; RTMPose-x keypoints; PoseC3D classifier via MMAction2 (heuristic fallback at launch, fine-tuned on THETIS + Tennis-MoCap assembled in parallel); clip lookup for all 4 stroke types; rules-based + Claude API text output; RevenueCat paywall structure in place.
+Scope: all strokes (forehand, backhand, serve, volley), all fault types, from day one.
 Done when: a real phone-recorded video goes in and a stroke verdict, text recommendation, and reference clip come back unassisted on a real device.
 
 **Phase 2 - 3D reconstruction and comparison, no rendering.**
-MotionBERT and PoseMamba both integrated on Modal and fine-tuned on the professor's tennis dataset; SmoothNet smoothing; skeleton normalization; phase detection; DTW alignment; delta computation.
-Done when: for a test video the system outputs a numerically validated delta table (e.g. hip rotation at contact: user 34°, pro reference 52°) that the professor confirms is plausible.
+MotionBERT and PoseMamba both integrated on Modal and fine-tuned on SportsPose tennis sequences (131 clips, COCO 17 joints, Qualisys-validated); SmoothNet smoothing; skeleton normalization; phase detection; DTW alignment vs Tennis-MoCap high-performance reference motion (BVH converted to COCO 17 joints, 5 high-performance players, all stroke types); delta computation.
+Done when: for a test video the system outputs a numerically validated delta table (e.g. hip rotation at contact: user 34°, pro reference 52°) that is consistent with published tennis stroke biomechanics literature and validated against Tennis-MoCap high-performance reference values.
 Validate numbers before touching any rendering.
 
 **Phase 3 - Correction, overlay, and interactive viewer.**
@@ -238,7 +239,7 @@ No public competitor ships the full 3D path: monocular lift to 3D, phase-aligned
 
 **Moat:** The only app that shows a user's own body, corrected, on their own footage.
 Competitors sell scores, stickmen, and side-by-side comparisons.
-Reliability is the shared failure mode of every competitor - the quality gate plus professor-validated deltas before rendering is the direct counter-strategy.
+Reliability is the shared failure mode of every competitor - the quality gate plus numerically validated deltas (against Tennis-MoCap high-performance reference and published stroke biomechanics) before rendering is the direct counter-strategy.
 
 ## 8. Repository layout
 
@@ -247,7 +248,7 @@ Reliability is the shared failure mode of every competitor - the quality gate pl
 /api        FastAPI backend
 /pipeline   All ML: preprocessing, pose, lifting, alignment, IK, rendering - deployed to Modal
 /data       Dataset curation scripts, clip library tooling, reference management
-/docs       Architecture decisions, professor dataset notes, pipeline decisions
+/docs       Architecture decisions, dataset inventory and notes, pipeline decisions
 ```
 
 - Python 3.11+, typed (mypy), ruff for lint and format.
@@ -258,11 +259,62 @@ Reliability is the shared failure mode of every competitor - the quality gate pl
 - Store intermediate artifacts (keypoints, 3D sequences, deltas) as versioned JSON/NPZ in R2 keyed by job id, so later stages can be rerun without recomputing earlier ones.
 - Never commit secrets; use environment variables; keep `.env.example` current.
 
-## 9. Open questions
+## 9. Decided questions
 
-- OPEN: exact format of the professor's professional dataset (raw video, existing 3D motion, or pre-labeled?).
-  The DTW reference motion format depends on this. Resolve before building Phase 2.
-- OPEN: which strokes to support at launch.
-  Serve-only is the recommended starting scope given guided side-on filming fits it naturally.
-- OPEN: pricing for the premium tier (pay-per-analysis vs subscription).
-- OPEN: iOS first or Android first (depends on available test devices).
+- **Dataset for 3D lifter fine-tuning:** SportsPose tennis sequences (see §10). The professor's dataset is unavailable; SportsPose is the replacement.
+- **Dataset for DTW reference motion:** Tennis-MoCap high-performance BVH files (5 high-performance players, all stroke types). Must be converted from BVH 23-joint to COCO 17-joint before use in pipeline.
+- **Dataset for PoseC3D training:** THETIS (primary - 8,374 clips, 12 stroke types) + Tennis-MoCap (weak fault labels derived from joint angle deltas between regular and high-performance players). Heuristic fallback ships at Phase 1 launch while this is assembled.
+- **Strokes at launch:** All four - forehand, backhand, serve, volley. Detect every fault across every stroke. The code already supports this.
+- **Pricing:** Both pay-per-analysis and subscription are offered. Subscription is the promoted default (better LTV). Pay-per-analysis remains for low-commitment entry.
+- **Platform priority:** iOS first.
+
+## 10. Dataset inventory
+
+All datasets used in the ML pipeline.
+Agents must not use any dataset not listed here without surfacing it for review first.
+
+### SportsPose (3D lifter fine-tuning)
+
+- **Source:** github.com/ChristianIngwersen/SportsPose
+- **Role:** Fine-tuning data for MotionBERT and PoseMamba
+- **Tennis coverage:** 131 sequences × 24 subjects; every sequence is shape (270, 17, 3) at 90 fps
+- **Format:** NPY arrays, COCO 17-joint skeleton - same format RTMPose-x outputs; no skeleton conversion needed
+- **Ground truth:** Validated against Qualisys marker-based system, 34.5mm mean error
+- **Status:** Partially downloaded (SportsPose.zip in repo root, 9.9 GB). Central directory truncated due to incomplete download; re-download before use. Raw data files inside are intact and readable by scanning from the start of the archive.
+- **Not suitable for:** DTW reference motion (subjects are non-professional; tennis stroke types within sequences are not labeled by stroke type)
+
+### Tennis-MoCap (DTW reference motion)
+
+- **Source:** github.com/jdpulgarin/Tennis-MoCap (CC BY-SA 3.0)
+- **Role:** High-performance reference motion for DTW alignment in Phase 2 and Phase 3
+- **Coverage:** 17 players (5 high-performance, 12 regular) from Caldas-Colombia tennis league; all 6 stroke types: serve, smash, forehand groundstroke, forehand volley, backhand groundstroke, backhand volley; labeled in labels.csv
+- **Format:** BVH files, 23 joints; labels.csv with stroke type (0-5), performance tier (0/1/2), gender per file
+- **Status:** Public on GitHub, ~76 MB, downloadable now
+- **Conversion required:** BVH 23-joint to COCO 17-joint mapping before use in pipeline
+- **Usage rule:** Use only performance label = 1 or 2 files as DTW reference. Regular player files (label = 0) are negative/fault examples for ST-GCN weak labeling only.
+- **Limitation:** "High-performance" is top of a regional Colombian league, not ATP/WTA level. Acceptable for Phase 2 numerical validation. Upgrade path: 3DTennisDS (Vicon, 10 pro players, pending author contact) before Phase 3 ships if delta accuracy is insufficient.
+
+### THETIS (PoseC3D training - primary)
+
+- **Source:** github.com/THETIS-dataset/dataset - free, no registration, ~13 GB
+- **Role:** Primary training corpus for PoseC3D stroke and fault classification
+- **Coverage:** 8,374 clips, 12 tennis stroke types, 55 players (p1-p31 beginner, p32-p55 expert); modalities: RGB, depth, silhouette, skeleton visualization
+- **Stroke types (12):** backhand, backhand (two-handed), backhand slice, backhand volley, forehand flat, forehand open stance, forehand slice, forehand volley, flat service, kick service, slice service, smash
+- **Labels:** Stroke type only - no explicit fault labels. Beginner/expert split embedded in filename (subject index).
+- **Format:** AVI video clips at 320x240, 30 fps, ~2-5 seconds per clip. Skeleton modality is rendered video (not raw coordinates) - raw COCO-17 keypoints must be re-extracted from RGB clips using RTMPose-x.
+- **PoseC3D input pipeline:** THETIS RGB clips → RTMPose-x → COCO-17 keypoints → MMAction2 annotation pickle (`[M, T, V, 2]` array + confidence scores per clip). MMAction2 provides extraction tooling.
+- **Fault label strategy:** No explicit fault labels exist in any public dataset. Weak fault labels derived by computing joint angle deltas between beginner subjects (p1-p31) and expert subjects (p32-p55) in THETIS, cross-validated against Tennis-MoCap high-performance reference motion.
+- **Status:** Confirmed downloadable. Not yet downloaded.
+
+### CalTennis (supplementary)
+
+- **Source:** HuggingFace
+- **Role:** Supplementary PoseC3D training data and possible Phase 2 fine-tuning supplement
+- **Coverage:** 51 hours, 11M+ frames, multi-view 3D, 40 players
+- **Status:** Identified, not yet downloaded. Download when THETIS alone is insufficient.
+
+### 3DTennisDS (future upgrade - pending)
+
+- **Source:** Contact authors (pending)
+- **Role:** Potential upgrade for DTW reference motion - 10 professional players, Vicon MoCap, 39 markers
+- **Status:** Access pending author contact. Do not block Phase 2 or Phase 3 on this. Tennis-MoCap is the working reference until this is secured.

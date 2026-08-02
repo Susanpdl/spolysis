@@ -39,6 +39,8 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ tier, filename }),
       }),
+    confirm: (jobId: string) =>
+      request<{ status: string }>(`/uploads/${jobId}/confirm`, { method: 'POST' }),
   },
   jobs: {
     list: (page = 1) =>

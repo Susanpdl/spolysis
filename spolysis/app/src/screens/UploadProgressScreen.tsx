@@ -35,9 +35,11 @@ export default function UploadProgressScreen({
       try {
         setUploading(true);
         const filename = `recording_${Date.now()}.mp4`;
-        const { upload_url, r2_key, job_id } = await api.uploads.getUrl('free', filename);
+        const { upload_url, job_id } = await api.uploads.getUrl('free', filename);
         setJobId(job_id);
         await uploadService.upload(videoUri, upload_url, (p) => setUploadProgress(p));
+        // Upload to R2 is complete - now tell the server to start the analysis workflow
+        await api.uploads.confirm(job_id);
         setUploading(false);
       } catch (err: any) {
         setUploading(false);

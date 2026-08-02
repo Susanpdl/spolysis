@@ -32,6 +32,10 @@ class JobListResponse(BaseModel):
     page_size: int
 
 
+class UploadConfirmRequest(BaseModel):
+    pass  # body is empty; job_id is in the path
+
+
 class JobCompleteRequest(BaseModel):
     stroke_type: str
     fault_label: str | None = None

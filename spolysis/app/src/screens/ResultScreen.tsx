@@ -24,10 +24,14 @@ const STROKE_LABELS: Record<string, string> = {
 };
 
 const FAULT_LABELS: Record<string, string> = {
-  arm_only: 'Arm-only swing',
   late_contact: 'Late contact',
-  low_follow_through: 'Low follow-through',
   open_stance: 'Open stance',
+  low_follow_through: 'Low follow-through',
+  arm_only: 'Arm-only swing',
+  no_hip_rotation: 'No hip rotation',
+  grip_issue: 'Grip inconsistency',
+  no_trophy_position: 'Missing trophy position',
+  low_toss: 'Low ball toss',
 };
 
 export default function ResultScreen({ route, navigation }: RecordingScreenProps<'Result'>) {

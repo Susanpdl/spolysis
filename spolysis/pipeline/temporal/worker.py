@@ -20,10 +20,11 @@ log = structlog.get_logger(__name__)
 
 
 async def main() -> None:
-    client = await Client.connect(
-        settings.temporal_host,
-        namespace=settings.temporal_namespace,
-    )
+    connect_kwargs: dict = dict(namespace=settings.temporal_namespace)
+    if settings.temporal_api_key:
+        connect_kwargs["api_key"] = settings.temporal_api_key
+        connect_kwargs["tls"] = True
+    client = await Client.connect(settings.temporal_host, **connect_kwargs)
     log.info("temporal_worker_starting", host=settings.temporal_host, queue=settings.temporal_task_queue)
 
     worker = Worker(

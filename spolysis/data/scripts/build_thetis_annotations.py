@@ -15,6 +15,9 @@ This is a weak labelling strategy - not ground truth but sufficient to bootstrap
 the fault classifier.
 
 Input: data/thetis/keypoints/ (from preprocess_thetis.py)
+       Structure: keypoints/{stroke_folder}/{p{N}_{...}}.npy
+       Player number extracted from filename to determine expert status.
+
 Output: data/thetis/stroke_annotations.pkl, data/thetis/fault_annotations.pkl
 
 Usage:
@@ -26,25 +29,29 @@ from __future__ import annotations
 
 import argparse
 import pickle
+import re
 from pathlib import Path
 
 import numpy as np
 
-# THETIS stroke folder -> canonical 4-class label index
+# Actual THETIS folder names -> canonical 4-class label
+# Mirrors THETIS_STROKE_MAP in preprocess_thetis.py exactly
 STROKE_FOLDERS: dict[str, str] = {
-    "backhand":            "backhand",
-    "backhand_2hands":     "backhand",
-    "backhand_slice":      "backhand",
-    "backhand_volley":     "volley",
-    "forehand_flat":       "forehand",
-    "forehand_open_stance":"forehand",
-    "forehand_slice":      "forehand",
-    "forehand_volley":     "volley",
-    "flat_service":        "serve",
-    "kick_service":        "serve",
-    "slice_service":       "serve",
-    "smash":               "serve",
+    "backhand":             "backhand",
+    "backhand2hands":       "backhand",   # actual folder name (not backhand_2hands)
+    "backhand_slice":       "backhand",
+    "backhand_volley":      "volley",
+    "forehand_flat":        "forehand",
+    "forehand_openstands":  "forehand",   # actual folder name (not forehand_open_stance)
+    "forehand_slice":       "forehand",
+    "forehand_volley":      "volley",
+    "flat_service":         "serve",
+    "kick_service":         "serve",
+    "slice_service":        "serve",
+    "smash":                "serve",
 }
+
+_PLAYER_RE = re.compile(r"^p(\d+)_")
 STROKE_LABEL_IDX = {"forehand": 0, "backhand": 1, "serve": 2, "volley": 3}
 
 # Fault labels and their indices
@@ -70,9 +77,6 @@ L_WRIST, R_WRIST = 9, 10
 L_HIP, R_HIP = 11, 12
 L_KNEE, R_KNEE = 13, 14
 
-
-def _player_num(player_dir: str) -> int:
-    return int(Path(player_dir).name.lstrip("p"))
 
 
 def _compute_stroke_features(kps: np.ndarray) -> dict[str, float]:
@@ -228,41 +232,43 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # --- Pass 1: load all clips, compute features ---
+    # Keypoints are organized by stroke folder (mirrors THETIS VIDEO_RGB structure).
+    # Player number is extracted from the filename: p{N}_{...}.npy
     all_samples: list[dict] = []
     missing = skipped = 0
 
-    for player_dir in sorted(kp_root.iterdir()):
-        if not player_dir.is_dir() or not player_dir.name.startswith("p"):
+    for stroke_dir in sorted(kp_root.iterdir()):
+        if not stroke_dir.is_dir():
             continue
-        try:
-            player_num = int(player_dir.name.lstrip("p"))
-        except ValueError:
+        stroke_folder = stroke_dir.name.lower()
+        stroke_label = STROKE_FOLDERS.get(stroke_folder)
+        if stroke_label is None:
+            skipped += 1
             continue
-        is_expert = player_num >= EXPERT_MIN_PLAYER
 
-        for stroke_dir in sorted(player_dir.iterdir()):
-            stroke_folder = stroke_dir.name.lower()
-            stroke_label = STROKE_FOLDERS.get(stroke_folder)
-            if stroke_label is None:
+        for npy_file in sorted(stroke_dir.glob("*.npy")):
+            m = _PLAYER_RE.match(npy_file.name)
+            if m is None:
                 skipped += 1
                 continue
+            player_num = int(m.group(1))
+            is_expert = player_num >= EXPERT_MIN_PLAYER
 
-            for npy_file in sorted(stroke_dir.glob("*.npy")):
-                try:
-                    kps = np.load(str(npy_file))  # (T, 17, 3)
-                    if kps.shape[0] < 5:
-                        continue
-                    feats = _compute_stroke_features(kps)
-                    all_samples.append({
-                        "path": str(npy_file),
-                        "keypoints": kps,
-                        "stroke_label": stroke_label,
-                        "is_expert": is_expert,
-                        "features": feats,
-                        "player": player_dir.name,
-                    })
-                except Exception as e:
-                    missing += 1
+            try:
+                kps = np.load(str(npy_file))  # (T, 17, 3)
+                if kps.shape[0] < 5:
+                    continue
+                feats = _compute_stroke_features(kps)
+                all_samples.append({
+                    "path": str(npy_file),
+                    "keypoints": kps,
+                    "stroke_label": stroke_label,
+                    "is_expert": is_expert,
+                    "features": feats,
+                    "player": f"p{player_num}",
+                })
+            except Exception:
+                missing += 1
 
     print(f"Loaded {len(all_samples)} clips  (skipped {skipped} unknown strokes, {missing} load errors)")
 

@@ -210,7 +210,9 @@ def train(
 
         for x, y in train_loader:
             x, y = x.to(device), y.to(device)
-            logits = model(x)
+            # Call backbone + cls_head directly to avoid MMAction2 data dict requirements
+            feats = model.backbone(x)
+            logits = model.cls_head(feats)
             loss = criterion(logits, y)
             optimizer.zero_grad()
             loss.backward()
@@ -226,7 +228,9 @@ def train(
         val_correct = val_total = 0
         with torch.no_grad():
             for x, y in val_loader:
-                logits = model(x.to(device))
+                x = x.to(device)
+                feats = model.backbone(x)
+                logits = model.cls_head(feats)
                 val_correct += (logits.argmax(1) == y.to(device)).sum().item()
                 val_total += len(y)
 

@@ -2,27 +2,32 @@
 """
 Extract RTMPose-x keypoints from THETIS RGB video clips.
 
-THETIS structure (after download):
-  data/thetis/
-    p01/
-      forehand_flat/  backhand/  ...  (12 stroke-type folders)
-        *.avi
-    p02/
+THETIS actual structure (VIDEO_RGB/ subdirectory):
+  VIDEO_RGB/
+    forehand_flat/
+      p1_foreflat_s1.avi
+      p1_foreflat_s2.avi
       ...
+      p55_foreflat_s3.avi
+    backhand/
+      p1_back_s1.avi
+      ...
+    backhand2hands/   (not backhand_2hands)
+    forehand_openstands/  (not forehand_open_stance)
     ...
-    p55/
 
-Players p01-p31 are beginners (fault label source).
+Players p1-p31 are beginners (fault label source).
 Players p32-p55 are experts (reference motion).
+Player number is embedded in the filename: p{N}_{abbrev}_s{N}.avi
 
 Output per clip: an NPY file with shape (T, 17, 3) - x, y, confidence in pixel coords.
-Stored in data/thetis/keypoints/<player>/<stroke_type>/<clip_stem>.npy
+Stored in data/thetis/keypoints/<stroke_folder>/<clip_stem>.npy
+(mirrors THETIS input structure, player number extractable from filename)
 
 Usage:
   python data/scripts/preprocess_thetis.py \\
-    --input  data/thetis/ \\
+    --input  data/raw/THETIS/VIDEO_RGB/ \\
     --output data/thetis/keypoints/ \\
-    --workers 4
 
 Requires mmpose and a GPU (or use --device cpu for slow CPU fallback).
 """
@@ -30,30 +35,32 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import subprocess
 import tempfile
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
 
-# THETIS 12 stroke-type folder names -> our canonical 4-class label
+# Actual THETIS VIDEO_RGB folder names -> our canonical 4-class label
 THETIS_STROKE_MAP: dict[str, str] = {
-    "backhand":            "backhand",
-    "backhand_2hands":     "backhand",
-    "backhand_slice":      "backhand",
-    "backhand_volley":     "volley",
-    "forehand_flat":       "forehand",
-    "forehand_open_stance":"forehand",
-    "forehand_slice":      "forehand",
-    "forehand_volley":     "volley",
-    "flat_service":        "serve",
-    "kick_service":        "serve",
-    "slice_service":       "serve",
-    "smash":               "serve",
+    "backhand":             "backhand",
+    "backhand2hands":       "backhand",   # actual folder name (not backhand_2hands)
+    "backhand_slice":       "backhand",
+    "backhand_volley":      "volley",
+    "forehand_flat":        "forehand",
+    "forehand_openstands":  "forehand",   # actual folder name (not forehand_open_stance)
+    "forehand_slice":       "forehand",
+    "forehand_volley":      "volley",
+    "flat_service":         "serve",
+    "kick_service":         "serve",
+    "slice_service":        "serve",
+    "smash":                "serve",
 }
 
 EXPERT_THRESHOLD = 32  # players p32-p55 are experts
+
+_PLAYER_RE = re.compile(r"^p(\d+)_")
 
 
 def _extract_frames(video_path: str, output_dir: str, fps: float = 30.0) -> list[str]:
@@ -118,32 +125,29 @@ def process_clip(
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Extract RTMPose-x keypoints from THETIS clips")
-    ap.add_argument("--input", required=True, help="THETIS dataset root directory")
+    ap.add_argument("--input", required=True, help="THETIS VIDEO_RGB directory (data/raw/THETIS/VIDEO_RGB/)")
     ap.add_argument("--output", required=True, help="Output directory for keypoint .npy files")
     ap.add_argument("--device", default="cuda", help="'cuda' or 'cpu'")
     ap.add_argument("--fps", type=float, default=30.0)
     ap.add_argument("--overwrite", action="store_true", help="Re-process already-done clips")
     args = ap.parse_args()
 
-    thetis_root = Path(args.input)
+    thetis_rgb = Path(args.input)
     output_root = Path(args.output)
 
-    # Collect all clips
+    # Collect all clips - THETIS is organized by stroke type, player encoded in filename
     tasks: list[tuple[str, str]] = []  # (video_path, output_npy_path)
-    for player_dir in sorted(thetis_root.glob("p*")):
-        if not player_dir.is_dir():
+    for stroke_dir in sorted(thetis_rgb.iterdir()):
+        if not stroke_dir.is_dir():
             continue
-        for stroke_dir in sorted(player_dir.iterdir()):
-            if not stroke_dir.is_dir():
+        stroke_folder = stroke_dir.name.lower()
+        if stroke_folder not in THETIS_STROKE_MAP:
+            continue
+        for video_file in sorted(stroke_dir.glob("*.avi")):
+            out_path = output_root / stroke_folder / f"{video_file.stem}.npy"
+            if not args.overwrite and out_path.exists():
                 continue
-            stroke_folder = stroke_dir.name.lower()
-            if stroke_folder not in THETIS_STROKE_MAP:
-                continue
-            for video_file in sorted(stroke_dir.glob("*.avi")):
-                out_path = output_root / player_dir.name / stroke_folder / f"{video_file.stem}.npy"
-                if not args.overwrite and out_path.exists():
-                    continue
-                tasks.append((str(video_file), str(out_path)))
+            tasks.append((str(video_file), str(out_path)))
 
     print(f"Clips to process: {len(tasks)}")
     if not tasks:

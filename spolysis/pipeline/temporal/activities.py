@@ -20,7 +20,7 @@ class WorkflowParams:
 
 @activity.defn
 async def _notify_api(path: str, body: dict) -> None:
-    url = f"{settings.api_base_url}{path}"
+    url = f"{settings.internal_api_url}{path}"
     headers = {"Authorization": f"Bearer {settings.internal_api_secret}"}
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(url, json=body, headers=headers)

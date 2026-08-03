@@ -6,7 +6,11 @@ import structlog
 
 log = structlog.get_logger(__name__)
 
-RTMPOSE_CONFIG = "rtmpose-x_8xb256-420e_coco-256x192"
+# RTMPose-x (700e, body7 pretrained, 384x288) - baked into image at build time.
+# Config from projects/rtmpose; uses mmpose:: prefix for base refs which resolves
+# from the installed mmpose package. Weights downloaded via wget during build.
+_BAKED_CONFIG = "/opt/mmpose/rtmpose-x_8xb256-700e_coco-384x288.py"
+_BAKED_WEIGHTS = "/opt/mmpose/rtmpose-x_body7.pth"
 
 
 @dataclass
@@ -37,17 +41,28 @@ def run_pose_estimation(frame_dir: str) -> Pose2DResult:
     if not frame_paths:
         raise ValueError(f"No frames found in {frame_dir}")
 
-    log.info("pose_estimation_start", frame_count=len(frame_paths), config=RTMPOSE_CONFIG)
+    log.info("pose_estimation_start", frame_count=len(frame_paths))
+
+    if os.path.isfile(_BAKED_CONFIG) and os.path.isfile(_BAKED_WEIGHTS):
+        pose2d_arg = _BAKED_CONFIG
+        weights_arg = _BAKED_WEIGHTS
+        log.info("rtmpose_using_baked_checkpoint", config=_BAKED_CONFIG, weights=_BAKED_WEIGHTS)
+    else:
+        log.warning("rtmpose_baked_checkpoint_missing_falling_back_to_metafile")
+        pose2d_arg = "rtmpose-l_8xb256-420e_coco-256x192"
+        weights_arg = None
 
     try:
         inferencer = MMPoseInferencer(
-            pose2d=RTMPOSE_CONFIG,
+            pose2d=pose2d_arg,
+            pose2d_weights=weights_arg,
             device="cuda",
         )
     except Exception:
         log.warning("cuda_unavailable_falling_back_to_cpu")
         inferencer = MMPoseInferencer(
-            pose2d=RTMPOSE_CONFIG,
+            pose2d=pose2d_arg,
+            pose2d_weights=weights_arg,
             device="cpu",
         )
 

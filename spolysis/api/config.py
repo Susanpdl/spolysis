@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     supabase_url: str
+    supabase_anon_key: str
     supabase_service_key: str
     supabase_jwt_secret: str
 
@@ -13,7 +14,7 @@ class Settings(BaseSettings):
     r2_access_key_id: str
     r2_secret_access_key: str
     r2_bucket_name: str = "spolysis"
-    r2_public_url: str
+    r2_public_url: str = ""
 
     upstash_redis_rest_url: str
     upstash_redis_rest_token: str
@@ -21,6 +22,7 @@ class Settings(BaseSettings):
     temporal_host: str = "localhost:7233"
     temporal_namespace: str = "default"
     temporal_task_queue: str = "tennis-analysis"
+    temporal_api_key: str = ""
 
     internal_api_secret: str
 

@@ -289,9 +289,8 @@ Agents must not use any dataset not listed here without surfacing it for review 
 - **Role:** High-performance reference motion for DTW alignment in Phase 2 and Phase 3
 - **Coverage:** 17 players (5 high-performance, 12 regular) from Caldas-Colombia tennis league; all 6 stroke types: serve, smash, forehand groundstroke, forehand volley, backhand groundstroke, backhand volley; labeled in labels.csv
 - **Format:** BVH files, 23 joints; labels.csv with stroke type (0-5), performance tier (0/1/2), gender per file
-- **Status:** Public on GitHub, ~76 MB, downloadable now
-- **Conversion required:** BVH 23-joint to COCO 17-joint mapping before use in pipeline
-- **Usage rule:** Use only performance label = 1 or 2 files as DTW reference. Regular player files (label = 0) are negative/fault examples for ST-GCN weak labeling only.
+- **Status:** Downloaded to `data/tennis-mocap/`. BVH conversion complete - 25 COCO-17 NPY sequences in `data/reference_motion/` (forehand: 5, serve: 8, backhand: 4, volley: 8). Manifest at `data/reference_motion/manifest.json`. Note: sgomez player files are missing from the repo (listed in labels.csv but not present); 4 high-performance players converted (jarua, jduribe, jgacosta, lvargas).
+- **Usage rule:** Use only performance label = 1 or 2 files as DTW reference. Regular player files (label = 0) are negative/fault examples for PoseC3D weak labeling only.
 - **Limitation:** "High-performance" is top of a regional Colombian league, not ATP/WTA level. Acceptable for Phase 2 numerical validation. Upgrade path: 3DTennisDS (Vicon, 10 pro players, pending author contact) before Phase 3 ships if delta accuracy is insufficient.
 
 ### THETIS (PoseC3D training - primary)

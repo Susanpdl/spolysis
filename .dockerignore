@@ -1,0 +1,16 @@
+data/
+app/
+pipeline/
+.venv/
+docs/
+*.zip
+*.pdf
+*.jpg
+*.jpeg
+*.png
+__pycache__/
+*.pyc
+.git/
+.gitignore
+*.md
+node_modules/

@@ -22,14 +22,24 @@ pip install -r requirements.txt
 ## 2. Download model weights
 
 RTMPose-x weights are downloaded automatically on first run via MMPoseInferencer.
-Run the helper to pre-cache them:
+PoseC3D requires a pretrained NTU RGB+D checkpoint as the starting point for fine-tuning.
+Run the helper to pre-cache both:
 
 ```bash
 python -m pipeline.scripts.download_models
 ```
 
-Weights land in `~/.cache/mim/`.
+Weights land in `pipeline/weights/` and `~/.cache/mim/`.
 They are **not committed to git**.
+
+To download the PoseC3D NTU RGB+D pretrained checkpoint manually:
+
+```bash
+mkdir -p pipeline/weights
+# SlowOnly-R50 trained on NTU RGB+D 60 X-Sub (skeleton input)
+wget -O pipeline/weights/posec3d_ntu60_xsub.pth \
+  https://download.openmmlab.com/mmaction/skeleton/posec3d/slowonly_r50_ntu60_xsub/slowonly_r50_ntu60_xsub-f3adabf1.pth
+```
 
 ## 3. Create Modal secrets
 
@@ -80,32 +90,73 @@ python -m pipeline.stages.pose2d --input sample.mp4 --output /tmp/keypoints.json
 # Quality gate
 python -m pipeline.stages.quality --input /tmp/keypoints.json
 
-# Classification
+# Classification (heuristic if --stroke-model omitted)
 python -m pipeline.stages.classify \
-  --keypoints /tmp/keypoints.json \
-  --model-path pipeline/models/checkpoints/stgcn_best.pth \
-  --output /tmp/result.json
+  --keypoints /tmp/keypoints.npy \
+  --stroke-model pipeline/weights/posec3d_stroke.pth \
+  --fault-model pipeline/weights/posec3d_fault.pth
 ```
 
-## 7. Train the ST-GCN classifier
+## 7. Train the PoseC3D classifier
 
-Requires labeled JSONL files in `data/labels/` matching the schema in `data/labels/schema.json`.
+Three steps: preprocess THETIS clips → build annotation pickles → fine-tune.
+Run on a GPU machine (Modal recommended for the first two steps).
+
+**Step 1 - Extract RTMPose-x keypoints from THETIS RGB clips:**
 
 ```bash
-python -m pipeline.scripts.train_stgcn \
-  --labels-dir data/labels \
-  --checkpoint-out pipeline/models/checkpoints/stgcn_best.pth \
-  --epochs 80 \
-  --batch-size 16
+python data/scripts/preprocess_thetis.py \
+  --input  data/raw/THETIS/VIDEO_RGB/ \
+  --output data/thetis/keypoints/ \
+  --device cuda
 ```
 
-Upload the checkpoint to R2 after training so Modal workers can fetch it at cold start:
+This produces `data/thetis/keypoints/{stroke_folder}/{clip_stem}.npy` (T, 17, 3) per clip.
+Takes ~4-6 hours on a single GPU for all 8,374 clips.
+
+**Step 2 - Build MMAction2 annotation pickles:**
 
 ```bash
-aws s3 cp pipeline/models/checkpoints/stgcn_best.pth \
-  s3://spolysis/models/stgcn_best.pth \
+python data/scripts/build_thetis_annotations.py \
+  --keypoints data/thetis/keypoints/ \
+  --output    data/thetis/
+```
+
+Produces `data/thetis/stroke_annotations.pkl` and `data/thetis/fault_annotations.pkl`.
+
+**Step 3 - Fine-tune PoseC3D:**
+
+```bash
+# Stroke model (4 classes: forehand, backhand, serve, volley)
+python -m pipeline.scripts.train_posec3d \
+  --annotations data/thetis/stroke_annotations.pkl \
+  --task stroke \
+  --pretrained pipeline/weights/posec3d_ntu60_xsub.pth \
+  --output pipeline/weights/posec3d_stroke.pth \
+  --epochs 30
+
+# Fault model (8 classes: weak labels from beginner/expert deltas)
+python -m pipeline.scripts.train_posec3d \
+  --annotations data/thetis/fault_annotations.pkl \
+  --task fault \
+  --pretrained pipeline/weights/posec3d_ntu60_xsub.pth \
+  --output pipeline/weights/posec3d_fault.pth \
+  --epochs 30
+```
+
+Upload checkpoints to R2 after training so Modal workers can fetch them at cold start:
+
+```bash
+aws s3 cp pipeline/weights/posec3d_stroke.pth \
+  s3://spolysis/models/posec3d_stroke.pth \
+  --endpoint-url https://<account-id>.r2.cloudflarestorage.com
+
+aws s3 cp pipeline/weights/posec3d_fault.pth \
+  s3://spolysis/models/posec3d_fault.pth \
   --endpoint-url https://<account-id>.r2.cloudflarestorage.com
 ```
+
+Until checkpoints are available, the pipeline runs the heuristic fallback automatically.
 
 ## Stage input/output contracts
 

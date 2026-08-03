@@ -52,12 +52,30 @@ export default function ResultScreen({ route, navigation }: RecordingScreenProps
     }
   };
 
-  if (isLoadingJob || isLoadingResult || !result) {
+  if (isLoadingJob || isLoadingResult) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loading}>
           <ActivityIndicator color={colors.primary} size="large" />
           <Text style={[typography.body, { color: colors.text.secondary }]}>Loading result...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!result) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loading}>
+          <Text style={[typography.h3, { color: colors.text.primary, marginBottom: spacing.sm }]}>
+            Could not load result
+          </Text>
+          <Text style={[typography.body, { color: colors.text.secondary, textAlign: 'center' }]}>
+            Something went wrong fetching your analysis.
+          </Text>
+          <TouchableOpacity style={styles.doneBtn} onPress={handleDone}>
+            <Text style={styles.doneBtnText}>Try again</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );

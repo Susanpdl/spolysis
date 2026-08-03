@@ -12,3 +12,4 @@ sentry-sdk[fastapi]==2.14.0
 opentelemetry-instrumentation-fastapi==0.48b0
 opentelemetry-exporter-otlp==1.27.0
 httpx==0.27.2
+structlog==24.4.0

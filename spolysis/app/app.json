@@ -17,7 +17,8 @@
       "infoPlist": {
         "NSCameraUsageDescription": "Spolysis uses your camera to record your tennis strokes for analysis.",
         "NSMicrophoneUsageDescription": "Spolysis uses your microphone while recording tennis strokes.",
-        "NSPhotoLibraryUsageDescription": "Spolysis lets you upload existing videos from your photo library."
+        "NSPhotoLibraryUsageDescription": "Spolysis lets you upload existing videos from your photo library.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -26,11 +27,25 @@
         "backgroundColor": "#0a0a0a"
       },
       "package": "com.spolysis.app",
-      "permissions": ["CAMERA", "RECORD_AUDIO", "READ_MEDIA_IMAGES", "READ_MEDIA_VIDEO"]
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO"
+      ]
     },
     "plugins": [
       "react-native-vision-camera",
-      "react-native-permissions",
+      [
+        "react-native-permissions",
+        {
+          "iosPermissions": [
+            "CAMERA",
+            "MICROPHONE",
+            "PHOTO_LIBRARY"
+          ]
+        }
+      ],
       [
         "expo-image-picker",
         {
@@ -38,6 +53,12 @@
         }
       ]
     ],
-    "scheme": "spolysis"
+    "scheme": "spolysis",
+    "extra": {
+      "eas": {
+        "projectId": "417f03f4-f2b1-4aab-93ed-d02f02f97069"
+      }
+    },
+    "owner": "susshann"
   }
 }

@@ -23,13 +23,13 @@ The premium tier does a full monocular 3D lift, phase-aligned DTW comparison aga
 **Free (2D)**
 - Guided in-app recording with live pose validation
 - RTMPose-x 2D pose estimation
-- ST-GCN stroke classification (forehand / backhand / serve / volley) and fault detection
+- PoseC3D stroke classification (forehand / backhand / serve / volley) and fault detection
 - Plain-text coaching recommendation (Claude API phrased, rules-based findings)
 - Curated reference clip of a professional performing the correct motion
 
 **Premium (3D)**
 - Everything in the free tier
-- Monocular 3D reconstruction (MotionBERT / PoseMamba)
+- Monocular 3D reconstruction (MotionBERT / PoseMamba, winner selected after validation)
 - Phase detection (preparation, backswing, contact, follow-through)
 - Keyframe-anchored DTW alignment against professional reference motion
 - Biomechanical delta computation (joint angles and timing per phase)
@@ -39,63 +39,74 @@ The premium tier does a full monocular 3D lift, phase-aligned DTW comparison aga
 
 ## Current state
 
-**Phase 1 is complete (code).**
-The full 2D free tier is implemented end-to-end, from guided recording to results screen.
-The codebase is ready to run; the remaining steps before the first real analysis comes back are infrastructure provisioning and training data.
+### Where we are
 
-Phase 2 (3D reconstruction and DTW comparison) is designed and the pipeline architecture is implemented.
-The 3D stages are not yet fine-tuned or validated on tennis data - that requires the training datasets described below.
+Phase 1 code is complete end-to-end.
+All screens, all backend endpoints, all Modal pipeline stages, Temporal workflow, and results screen are built and committed.
+The codebase is in a runnable state.
+
+We are in the middle of the first device test - Xcode is being installed and the iOS simulator build will run next.
+The three remaining steps before the first real analysis comes back are:
+
+1. **Simulator smoke test** - build and run on iOS simulator, confirm app loads and camera screen works.
+2. **Infrastructure provisioning** - Supabase (database + auth), Cloudflare R2 (storage), Upstash Redis (cache), Temporal Cloud (workflow engine) all need to be provisioned and secrets wired up.
+3. **Reference clips** - one canonical reference clip per stroke type must be extracted from THETIS expert players and uploaded to R2.
+   Script is at `data/scripts/prepare_reference_clips.py`.
+   THETIS must be downloaded first (~13 GB, public).
+
+Phase 2 architecture is fully designed.
+The 3D pipeline stages are not yet implemented.
+The Tennis-MoCap BVH-to-COCO-17 conversion is complete: 25 NPY reference sequences are in `data/reference_motion/` covering all 4 stroke types from 4 high-performance players.
 
 ### What is built
 
 | Layer | Status |
 |---|---|
-| React Native app (Expo Bare) | Complete - all screens, navigation, camera, upload |
-| FastAPI backend (Fly.io) | Complete - auth, uploads, job status, internal callbacks |
-| Temporal workflow orchestration | Complete - durable per-job workflow with retries |
-| Modal GPU pipeline | Complete - all 8 stages wired end to end |
-| 2D pose estimation (RTMPose-x) | Complete - weights auto-download on first run |
-| Stroke + fault classifier (ST-GCN) | Architecture complete; heuristic fallback ships now; awaiting training data |
+| React Native app (Expo Bare) | Complete - all screens, navigation, camera, upload, result display |
+| FastAPI backend (Fly.io) | Complete - auth, signed uploads, job status, internal callbacks |
+| Temporal workflow orchestration | Complete - durable per-job workflow with retries and timeouts |
+| Modal GPU pipeline | Complete - all stages wired end to end, A10G, deployed |
+| 2D pose estimation (RTMPose-x) | Complete - weights auto-download on first cold start |
+| Stroke + fault classifier (PoseC3D) | Architecture complete; heuristic fallback ships now; awaiting THETIS training data |
 | Coaching text (Claude API) | Complete |
-| Supabase auth + database | Schema written; needs provisioning |
-| Cloudflare R2 storage | Integrated; needs provisioning |
-| RevenueCat subscriptions | Integrated; needs product configuration |
+| Reference clip lookup | Complete - indexes by stroke type + fault label |
+| Supabase auth + database | Schema complete; awaiting provisioning |
+| Cloudflare R2 storage | Integrated; awaiting provisioning |
+| RevenueCat subscriptions | Integrated; awaiting product configuration |
+| Tennis-MoCap reference motion | BVH conversion done - 25 NPY sequences in data/reference_motion/ |
+| EAS build configuration | Complete - simulator and production profiles configured |
 
-### What is not yet built
+### What is not yet built or done
 
-- Phase 2 pipeline stages (3D lift, smoothing, DTW, delta computation)
-- Phase 3 pipeline stages (IK correction, OpenCV overlay, ffmpeg encode, Three.js viewer)
-- ST-GCN trained weights (depends on labeled training data - see below)
-- Pro reference motion library for DTW (see below)
+- [ ] iOS simulator build passing end-to-end
+- [ ] Infrastructure provisioned (Supabase, R2, Upstash, Temporal Cloud)
+- [ ] Reference clips extracted from THETIS and uploaded to R2
+- [ ] PoseC3D trained weights (blocked on THETIS download + RTMPose-x keypoint extraction)
+- [ ] Phase 2: 3D lifting stages (MotionBERT / PoseMamba fine-tune on SportsPose tennis data)
+- [ ] Phase 2: DTW alignment, delta computation against Tennis-MoCap reference
+- [ ] Phase 3: CCD IK correction, OpenCV overlay render, ffmpeg H.264 encode
+- [ ] Phase 3: Three.js interactive 3D viewer in the app
+- [ ] Phase 4: Sentry + OpenTelemetry + Grafana Cloud + LangFuse observability
 
 ## Training data status
 
-The ST-GCN classifier and the 3D reference motion library both require tennis-specific data.
-This is the active bottleneck before Phase 1 goes live.
-
-### Datasets identified
-
-| Dataset | What it provides | Access |
+| Dataset | Role | Status |
 |---|---|---|
-| **THETIS** | 8,374 clips, 12 stroke classes, 3D Kinect skeleton, 55 subjects | Public - github.com/THETIS-dataset/dataset |
-| **CalTennis** | 51 hours, 11M+ frames, multi-view 3D, 40 players | Public - huggingface.co/datasets/demalenk/caltennis |
-| **Tennis-MoCap** | BVH motion files, 17 players (5 high-performance) | Public - github.com/jdpulgarin/Tennis-MoCap |
-| **Penn Action** | 2,326 clips, forehand + serve labels, 2D keypoints | Public - cis.upenn.edu/~kostas/Penn_Action.tar.gz |
-| **SportsPose** | 176K+ validated 3D poses, includes tennis | Access requested from DTU (pending) |
-| **3DTennisDS** | 10 professional players, Vicon MoCap, 39 markers | Contact authors (pending) |
-| **Tennis Action-GE** | Technique quality annotations by 20 coaches | Contact authors |
+| **THETIS** | PoseC3D training - 8,374 clips, 12 stroke types, 55 players | Public; not yet downloaded (~13 GB) |
+| **Tennis-MoCap** | DTW reference motion - 5 high-performance players, all strokes | Downloaded; BVH conversion done; 25 NPY sequences ready |
+| **SportsPose** | 3D lifter fine-tuning - 131 tennis sequences, Qualisys-validated | Partially downloaded (zip incomplete; re-download needed) |
+| **CalTennis** | Supplementary PoseC3D training - 51 hours, 11M+ frames, multi-view 3D | Identified; download when THETIS alone is insufficient |
+| **3DTennisDS** | Upgrade for DTW reference motion - 10 pro players, Vicon MoCap | Author contact pending; not blocking Phase 2 |
 
-**Critical gap:** No public dataset has frame-level fault annotations (arm_only, late_contact, etc.).
-The THETIS beginner/expert pair structure can generate weak fault labels via delta computation.
-The Tennis Action-GE dataset with coach annotations is the most promising source for direct fault labels.
+**Fault label gap:** No public dataset has frame-level fault annotations.
+Weak fault labels for PoseC3D training are derived by comparing joint angle deltas between THETIS beginner subjects (p1-p31) and expert subjects (p32-p55), cross-validated against Tennis-MoCap high-performance reference.
 
 ## Architecture overview
 
 ```
 Mobile app (React Native + Expo Bare)
-  │
-  ├── ML Kit Pose Detection (live, on-device) - framing gate before recording
   ├── Guided recording screen with body outline overlay
+  ├── ML Kit live pose validation gate (on-device, before recording starts)
   └── Upload to Cloudflare R2 via signed URL
 
 FastAPI backend (Fly.io)
@@ -104,22 +115,22 @@ FastAPI backend (Fly.io)
   ├── Temporal workflow trigger
   └── Internal callback endpoints (pipeline → API)
 
-Temporal workflow (durable orchestration)
-  └── Chains pipeline stages with automatic retries
+Temporal Cloud (durable orchestration)
+  └── Chains pipeline activities with automatic retries and timeouts
 
-Modal GPU pipeline (serverless, A10G, per-second billing)
+Modal GPU pipeline (serverless A10G, per-second billing)
   ├── Frame extraction (ffmpeg, 30fps)
   ├── Player detection + crop
-  ├── Quality gate (blur, framing, occlusion)
+  ├── Quality gate (blur, framing, occlusion) - reject before expensive compute
   ├── RTMPose-x 2D keypoints per frame
-  ├── Feature extraction (joint angles, velocities)
+  ├── Feature extraction (joint angles, velocities, normalized positions)
   ├── Stroke segmentation (wrist velocity peak detection)
-  ├── ST-GCN classification (stroke type + fault label)
+  ├── PoseC3D classification (stroke type + fault label)
   ├── Reference clip lookup
-  └── Claude API coaching text
+  └── Claude API coaching text (Haiku - phrases findings, does not originate them)
 
 Cloudflare R2 + CDN
-  └── Raw uploads, result videos, reference clips, intermediate artifacts
+  └── Raw uploads, result videos, reference clips, intermediate artifacts (keyed by job_id)
 ```
 
 ## Technology choices and rationale
@@ -127,13 +138,15 @@ Cloudflare R2 + CDN
 **2D pose: RTMPose-x via MMPose** - maximum accuracy variant with permissive license.
 YOLO pose (AGPL) and BlazePose server-side (degrades on fast tennis motion) are explicitly excluded.
 
-**Stroke classification: ST-GCN** - exploits the skeleton graph structure; transfers well from NTU RGB+D pretrained weights; outperforms temporal CNNs on skeleton-based action recognition.
+**Stroke classification: PoseC3D via MMAction2** - input is stacked RTMPose-x heatmap volumes, not collapsed coordinates.
+The full heatmap signal is more robust to occlusion and viewpoint variation than coordinate-only models.
+ST-GCN is explicitly excluded because it loses the per-joint confidence signal by collapsing to coordinates.
 
 **3D lift: MotionBERT and PoseMamba** - both are regression-based (fast inference, no iterative optimization).
-Both will be fine-tuned on tennis data; the one with better accuracy on tennis motion deploys to production.
-Iterative optimization (SMPLify-style) is explicitly excluded from the user-facing inference path due to latency (1-5s per frame).
+Both will be fine-tuned on SportsPose tennis sequences; the one with better accuracy on tennis motion deploys to production.
+SMPLify-style iterative fitting is explicitly excluded from the user-facing path (1-5 seconds per frame is unacceptable).
 
-**Temporal smoothing: Savitzky-Golay + SmoothNet** - SG removes gross noise first; SmoothNet understands human motion structure and produces the best overlay quality.
+**Temporal smoothing: Savitzky-Golay + SmoothNet** - SG removes gross noise first; SmoothNet understands human motion structure and gives best overlay quality.
 
 **DTW alignment: keyframe-anchored DTW** - anchor at wrist velocity peak / contact point; constrained DTW on each side with Sakoe-Chiba band.
 This handles the timing variation between amateur and professional strokes reliably.
@@ -144,7 +157,7 @@ This handles the timing variation between amateur and professional strokes relia
 
 **Orchestration: Temporal** - durable workflow per pipeline run; every stage is an activity with retries and timeouts; full state visibility.
 
-**GPU compute: Modal (serverless)** - zero idle cost, per-second billing.
+**GPU compute: Modal (serverless)** - zero idle cost, per-second billing on A10G.
 Target unit economics: $0.15-$0.50 per 5-minute premium analysis.
 
 **Coaching text: Claude API (Haiku)** - LLM only rephrases findings; it never originates them.
@@ -156,8 +169,8 @@ Rules-based thresholds select findings from computed deltas; Claude puts them in
 /app        React Native app (Expo Bare)
 /api        FastAPI backend
 /pipeline   ML pipeline - all stages, models, Temporal workflow - deployed to Modal
-/data       Dataset curation scripts, clip library catalog, label schema
-/docs       Architecture decisions, dataset notes
+/data       Dataset curation scripts, clip library tooling, reference motion management
+/docs       Architecture decisions, dataset notes, cost breakdown
 ```
 
 ## Running the project
@@ -168,24 +181,25 @@ See `/pipeline/README.md` for the full setup guide including:
 - Modal secret configuration and deployment
 - Temporal worker startup
 - Per-stage CLI entry points for debugging
-- ST-GCN training instructions
+- PoseC3D training instructions
 
 ## Build phases
 
 **Phase 1 (current) - 2D free tier end to end**
 Done when: a real phone-recorded video goes in and a stroke verdict, text recommendation, and reference clip come back on a real device.
-Status: code complete; blocked on infrastructure provisioning and ST-GCN training data.
+Status: code complete; next step is iOS simulator test, then infrastructure provisioning, then reference clips.
 
 **Phase 2 - 3D reconstruction and comparison, no rendering**
-Done when: for a test video the system outputs a numerically validated delta table (e.g. hip rotation at contact: user 34°, pro reference 52°) confirmed as plausible.
-Status: architecture designed; pipeline stages not yet implemented; blocked on training datasets.
+Done when: for a test video the system outputs a numerically validated delta table (e.g., hip rotation at contact: user 34 degrees, pro reference 52 degrees) that is consistent with published tennis stroke biomechanics literature and validated against Tennis-MoCap high-performance reference values.
+Validate numbers before touching any rendering.
+Status: architecture designed; Tennis-MoCap reference motion converted and ready; 3D pipeline stages not yet implemented; SportsPose fine-tune not yet run.
 
 **Phase 3 - Correction, overlay, and interactive viewer**
 Done when: a user video comes back with a visibly correct corrected skeleton overlaid at the flawed moment, no jitter, no puppet artifacts, and the 3D viewer rotates and scrubs correctly.
 Status: not started.
 
 **Phase 4 - Hardening and growth**
-Full observability rollout, fault-specific reference clips, production benchmark between MotionBERT and PoseMamba, interactive viewer performance tuning.
+Full observability rollout (Sentry + OpenTelemetry + Grafana Cloud + LangFuse), fault-specific reference clips based on observed fault frequency from real usage, production benchmark between MotionBERT and PoseMamba, interactive viewer performance tuning.
 Status: not started.
 
 ## Competitive landscape
@@ -197,4 +211,4 @@ Status: not started.
 | OffCourtz | Parameter scoring; "how you should have performed" overlay | Closest language but 2D; no bone-length-preserving IK |
 | SwingVision | ~500K users, ~$4M ARR; ball tracking, stats, highlights | Adjacent product (stats, not form correction); proves people pay |
 
-No public competitor ships the full path: monocular 3D lift → phase-aligned DTW → CCD IK correction on user's own bone lengths → overlay on original footage.
+No public competitor ships the full path: monocular 3D lift - phase-aligned DTW - CCD IK correction on the user's own bone lengths - overlay on original footage.

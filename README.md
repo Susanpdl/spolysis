@@ -5,6 +5,18 @@ Spolysis is a mobile application that helps amateur tennis players improve their
 A user records themselves playing through a guided in-app camera.
 The system compares their motion against a dataset of professional players performing the same strokes, then delivers a precise correction overlaid on their original video.
 
+## Live demo - running on iOS simulator
+
+<p align="center">
+  <img src="docs/screenshots/welcome.png" width="28%" alt="Welcome screen" />
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/create-account.png" width="28%" alt="Create account" />
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/sign-in.png" width="28%" alt="Sign in" />
+</p>
+
+*Running on iPhone 17 Pro simulator, iOS 26.5. Dark theme throughout.*
+
 ## What makes this different
 
 Every tennis analysis app on the market today gives you scores, stickmen, or a side-by-side comparison with a professional.
@@ -170,18 +182,135 @@ Rules-based thresholds select findings from computed deltas; Claude puts them in
 /api        FastAPI backend
 /pipeline   ML pipeline - all stages, models, Temporal workflow - deployed to Modal
 /data       Dataset curation scripts, clip library tooling, reference motion management
-/docs       Architecture decisions, dataset notes, cost breakdown
+/docs       Architecture decisions, dataset notes, cost breakdown, screenshots
 ```
 
-## Running the project
+## Getting started
 
-See `/pipeline/README.md` for the full setup guide including:
-- Python environment and dependency installation
-- RTMPose-x weight download
-- Modal secret configuration and deployment
-- Temporal worker startup
-- Per-stage CLI entry points for debugging
-- PoseC3D training instructions
+### Prerequisites
+
+| Tool | Version | Install |
+|---|---|---|
+| Node.js | 18+ | nodejs.org |
+| Xcode | 15+ | Mac App Store |
+| CocoaPods | 1.15+ | `brew install cocoapods` |
+| Python | 3.11+ | python.org |
+| Modal | latest | `pip install modal` |
+| Expo CLI | latest | `npm install -g expo-cli` |
+
+### 1. Clone and install
+
+```bash
+git clone https://github.com/Susanpdl/spolysis.git
+cd spolysis
+```
+
+Install app dependencies:
+
+```bash
+cd app
+npm install
+```
+
+Install pipeline dependencies:
+
+```bash
+cd ../pipeline
+pip install -r requirements.txt
+```
+
+### 2. Environment variables
+
+Copy the example env file and fill in your credentials:
+
+```bash
+cp .env.example .env
+```
+
+Required variables (see `.env.example` for the full list):
+
+| Variable | Where to get it |
+|---|---|
+| `SUPABASE_URL` | Supabase project settings |
+| `SUPABASE_SERVICE_KEY` | Supabase project settings > API |
+| `SUPABASE_ANON_KEY` | Supabase project settings > API |
+| `R2_ACCOUNT_ID` | Cloudflare dashboard |
+| `R2_ACCESS_KEY_ID` | Cloudflare R2 > Manage API tokens |
+| `R2_SECRET_ACCESS_KEY` | Cloudflare R2 > Manage API tokens |
+| `R2_BUCKET_NAME` | Your R2 bucket name |
+| `ANTHROPIC_API_KEY` | console.anthropic.com |
+| `TEMPORAL_ADDRESS` | Temporal Cloud namespace connection string |
+| `TEMPORAL_NAMESPACE` | `spolysis.kwkvd` |
+| `INTERNAL_API_SECRET` | Any random secret string shared between API and pipeline |
+
+Upload the env file as a Modal secret named `spolysis-secrets`:
+
+```bash
+modal secret create spolysis-secrets $(cat .env | xargs)
+```
+
+### 3. Run the iOS app on simulator
+
+```bash
+cd app
+npx expo run:ios
+```
+
+This runs `expo prebuild`, installs CocoaPods, compiles with Xcode, and launches on the iOS simulator.
+First build takes 5-10 minutes; subsequent builds are fast.
+
+Note: the camera screen shows errors on simulator - that is expected.
+The iOS simulator has no real camera; the recording screen will work on a real device.
+
+### 4. Run the backend API locally
+
+```bash
+cd api
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8000
+```
+
+### 5. Deploy the pipeline to Modal
+
+```bash
+modal deploy pipeline/app.py
+```
+
+This builds the GPU Docker image (takes ~10 minutes the first time due to OpenMMLab compilation) and deploys the pipeline function and Temporal worker to Modal.
+
+### 6. Run the Temporal worker
+
+The Temporal worker runs as a long-lived Modal function:
+
+```bash
+modal run pipeline/app.py::run_temporal_worker
+```
+
+Or it starts automatically after `modal deploy` if you trigger it via the Modal dashboard.
+
+### 7. Prepare reference clips (Phase 1 only)
+
+Download THETIS (~13 GB, public):
+
+```bash
+# Follow instructions at github.com/THETIS-dataset/dataset
+```
+
+Then extract one canonical clip per stroke type from expert players (p32+):
+
+```bash
+python data/scripts/prepare_reference_clips.py
+```
+
+Upload to R2:
+
+```bash
+aws s3 cp data/clips/reference/ s3://your-bucket/clips/ \
+  --recursive \
+  --endpoint-url https://<account-id>.r2.cloudflarestorage.com
+```
+
+For the full pipeline setup guide including model weights, training instructions, and per-stage CLI entry points, see `/pipeline/README.md`.
 
 ## Build phases
 

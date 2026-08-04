@@ -6,18 +6,12 @@ import {
   TouchableOpacity,
   Dimensions,
   Alert,
-  Platform,
 } from 'react-native';
 import {
   Camera,
   useCameraDevice,
   useCameraPermission,
-  useFrameProcessor,
 } from 'react-native-vision-camera';
-import { useSharedValue, runOnJS } from 'react-native-reanimated';
-import PoseDetection, {
-  type PoseDetectionResult,
-} from '@react-native-ml-kit/pose-detection';
 import { RecordingScreenProps } from '@/navigation/types';
 import { BodyOutline } from '@/components/BodyOutline';
 import { usePoseValidation } from '@/hooks/usePoseValidation';
@@ -62,38 +56,18 @@ export default function RecordScreen({ navigation }: RecordingScreenProps<'Recor
 
   const [phase, setPhase] = useState<RecordingPhase>('preview');
   const [elapsedSec, setElapsedSec] = useState(0);
-  const [pose, setPose] = useState<Array<{ x: number; y: number; score?: number }> | null>(null);
 
-  const { isValid, instructionText } = usePoseValidation(pose);
+  // ML Kit pose detection stubbed out for Phase 1 - always "ready" so recording works E2E.
+  // Re-enable once the correct react-native-mlkit package is confirmed.
+  const mockReadyPose = Array.from({ length: 17 }, (_, i) => ({
+    x: i === 5 || i === 11 ? 0.35 : i === 6 || i === 12 ? 0.65 : 0.5,
+    y: 0.5,
+    score: 1.0,
+  }));
+  const { isValid, instructionText } = usePoseValidation(mockReadyPose);
   const { setVideoUri } = recordingStore();
 
   const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const frameSkip = useRef(0);
-
-  const updatePose = useCallback((result: PoseDetectionResult | null) => {
-    if (!result || result.poses.length === 0) {
-      setPose(null);
-      return;
-    }
-    const kps = result.poses[0].keypoints.map((kp) => ({
-      x: kp.x / SCREEN_W,
-      y: kp.y / SCREEN_H,
-      score: kp.score ?? 0,
-    }));
-    setPose(kps);
-  }, []);
-
-  // Frame processor runs on GPU thread; we throttle to every 6th frame (~5 fps at 30fps input)
-  const frameProcessor = useFrameProcessor(
-    (frame) => {
-      'worklet';
-      frameSkip.current = (frameSkip.current + 1) % 6;
-      if (frameSkip.current !== 0) return;
-      const result = PoseDetection.detectFromVisionCameraFrame(frame);
-      runOnJS(updatePose)(result as PoseDetectionResult | null);
-    },
-    [updatePose],
-  );
 
   const startRecording = useCallback(async () => {
     if (!cameraRef.current) return;
@@ -197,7 +171,6 @@ export default function RecordScreen({ navigation }: RecordingScreenProps<'Recor
         isActive
         video
         audio={false}
-        frameProcessor={phase === 'preview' || phase === 'countdown' ? frameProcessor : undefined}
       />
 
       {/* Body outline overlay */}

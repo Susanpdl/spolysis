@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Spolysis — Application Architecture</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0f1419;
+      --surface: #1a222c;
+      --surface-2: #243040;
+      --border: #2e3d4f;
+      --text: #e8eef4;
+      --muted: #8b9aab;
+      --accent: #3d9cf0;
+      --accent-dim: rgba(61, 156, 240, 0.15);
+      --free: #3ecf8e;
+      --premium: #f0a03d;
+      --warn: #f05c5c;
+      --font: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+      --mono: "IBM Plex Mono", "SF Mono", ui-monospace, monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: var(--font);
+      background:
+        radial-gradient(1200px 600px at 10% -10%, #1a3a5c 0%, transparent 55%),
+        radial-gradient(900px 500px at 100% 0%, #1a2e24 0%, transparent 50%),
+        var(--bg);
+      color: var(--text);
+      line-height: 1.55;
+      min-height: 100vh;
+    }
+
+    .shell {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      min-height: 100vh;
+    }
+
+    nav {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+      padding: 1.75rem 1.25rem;
+      border-right: 1px solid var(--border);
+      background: rgba(15, 20, 25, 0.85);
+      backdrop-filter: blur(8px);
+    }
+
+    nav .brand {
+      font-weight: 700;
+      font-size: 1.15rem;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.25rem;
+    }
+
+    nav .brand span { color: var(--accent); }
+
+    nav .sub {
+      color: var(--muted);
+      font-size: 0.8rem;
+      margin-bottom: 1.75rem;
+    }
+
+    nav a {
+      display: block;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.88rem;
+      padding: 0.4rem 0.6rem;
+      border-radius: 6px;
+      margin-bottom: 0.15rem;
+    }
+
+    nav a:hover {
+      color: var(--text);
+      background: var(--surface);
+    }
+
+    main {
+      padding: 2.5rem 3rem 4rem;
+      max-width: 1100px;
+    }
+
+    header.hero {
+      margin-bottom: 2.5rem;
+      padding-bottom: 1.75rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    header.hero h1 {
+      font-size: 2rem;
+      letter-spacing: -0.03em;
+      margin-bottom: 0.5rem;
+    }
+
+    header.hero p {
+      color: var(--muted);
+      max-width: 62ch;
+      font-size: 1.05rem;
+    }
+
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+
+    .badge {
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 0.3rem 0.65rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--muted);
+    }
+
+    .badge.ok { border-color: #2a6b4a; color: var(--free); background: rgba(62, 207, 142, 0.1); }
+    .badge.plan { border-color: #6b532a; color: var(--premium); background: rgba(240, 160, 61, 0.1); }
+
+    section {
+      margin-bottom: 3rem;
+      scroll-margin-top: 1.5rem;
+    }
+
+    section h2 {
+      font-size: 1.35rem;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.35rem;
+    }
+
+    section > .lead {
+      color: var(--muted);
+      margin-bottom: 1.25rem;
+      max-width: 70ch;
+    }
+
+    .diagram {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem 1rem;
+      overflow-x: auto;
+      margin-bottom: 1rem;
+    }
+
+    .diagram .mermaid {
+      display: flex;
+      justify-content: center;
+    }
+
+    .caption {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: -0.25rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.15rem 1.25rem;
+    }
+
+    .card h3 {
+      font-size: 0.95rem;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .dot.free { background: var(--free); }
+    .dot.premium { background: var(--premium); }
+    .dot.accent { background: var(--accent); }
+
+    .card p, .card li {
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+
+    .card ul {
+      padding-left: 1.1rem;
+      margin-top: 0.4rem;
+    }
+
+    .card li { margin-bottom: 0.25rem; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 0.7rem 0.9rem;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+
+    th {
+      background: var(--surface-2);
+      color: var(--text);
+      font-weight: 600;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    tr:last-child td { border-bottom: none; }
+
+    td code, p code, li code {
+      font-family: var(--mono);
+      font-size: 0.8em;
+      background: var(--accent-dim);
+      color: var(--accent);
+      padding: 0.1em 0.35em;
+      border-radius: 4px;
+    }
+
+    .stack-flow {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      margin: 1rem 0 1.5rem;
+    }
+
+    .stack-step {
+      display: grid;
+      grid-template-columns: 40px 1fr;
+      gap: 0.75rem;
+    }
+
+    .stack-step .rail {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .stack-step .node {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid var(--bg);
+      box-shadow: 0 0 0 2px var(--accent);
+      margin-top: 0.35rem;
+      flex-shrink: 0;
+    }
+
+    .stack-step .node.warn { background: var(--warn); box-shadow: 0 0 0 2px var(--warn); }
+    .stack-step .node.free { background: var(--free); box-shadow: 0 0 0 2px var(--free); }
+    .stack-step .node.premium { background: var(--premium); box-shadow: 0 0 0 2px var(--premium); }
+
+    .stack-step .line {
+      width: 2px;
+      flex: 1;
+      min-height: 18px;
+      background: var(--border);
+    }
+
+    .stack-step .body {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.85rem 1rem;
+      margin-bottom: 0.65rem;
+    }
+
+    .stack-step .body strong {
+      display: block;
+      font-size: 0.92rem;
+      margin-bottom: 0.2rem;
+    }
+
+    .stack-step .body span {
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+
+    .tier-split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-top: 0.5rem;
+    }
+
+    .tier-panel {
+      border-radius: 12px;
+      padding: 1.15rem;
+      border: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .tier-panel.free { border-top: 3px solid var(--free); }
+    .tier-panel.premium { border-top: 3px solid var(--premium); }
+
+    .tier-panel h3 {
+      font-size: 1rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .flow-chip {
+      display: block;
+      font-family: var(--font);
+      font-size: 0.8rem;
+      line-height: 1.4;
+      padding: 0.55rem 0.7rem;
+      background: var(--surface-2);
+      border-radius: 6px;
+      margin-bottom: 0.4rem;
+      color: var(--muted);
+      border-left: 3px solid var(--border);
+    }
+
+    .flow-chip strong {
+      display: block;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: var(--text);
+      margin-bottom: 0.15rem;
+      font-weight: 500;
+    }
+
+    .tier-panel.free .flow-chip { border-left-color: var(--free); }
+    .tier-panel.premium .flow-chip { border-left-color: var(--premium); }
+
+    #tiers table td:first-child { white-space: nowrap; }
+    #tiers table td:nth-child(2) { min-width: 12rem; }
+
+    footer {
+      margin-top: 2rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+
+    @media (max-width: 900px) {
+      .shell { grid-template-columns: 1fr; }
+      nav {
+        position: relative;
+        height: auto;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+      }
+      nav .nav-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.25rem;
+      }
+      main { padding: 1.5rem 1.25rem 3rem; }
+      .grid-2, .tier-split { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <nav>
+      <div class="brand">Spolysis <span>Arch</span></div>
+      <div class="sub">Visual system map</div>
+      <div class="nav-links">
+        <a href="#overview">Overview</a>
+        <a href="#system">System map</a>
+        <a href="#journey">User journey</a>
+        <a href="#upload">Upload path</a>
+        <a href="#pipeline">ML pipeline</a>
+        <a href="#tiers">Free vs Premium</a>
+        <a href="#sequence">Sequence</a>
+        <a href="#repo">Repo map</a>
+        <a href="#stack">Tech stack</a>
+        <a href="#status">Build status</a>
+      </div>
+    </nav>
+
+    <main>
+      <header class="hero">
+        <h1>Application Architecture</h1>
+        <p>
+          End-to-end map of Spolysis: phone recording → signed upload to R2 →
+          Temporal orchestration → Modal GPU analysis → results back in the app.
+        </p>
+        <div class="badges">
+          <span class="badge ok">Phase 1 free tier — code shipped</span>
+          <span class="badge plan">Phase 2–3 premium 3D — designed</span>
+        </div>
+      </header>
+
+      <!-- OVERVIEW -->
+      <section id="overview">
+        <h2>1. What this system does</h2>
+        <p class="lead">
+          Amateur players film a stroke. The system finds the body, classifies the stroke/fault (free),
+          or reconstructs 3D motion and shows a corrected skeleton on their footage (premium).
+        </p>
+        <div class="grid-2">
+          <div class="card">
+            <h3><span class="dot free"></span> Free (2D)</h3>
+            <ul>
+              <li>RTMPose-x skeleton per frame</li>
+              <li>ST-GCN → stroke + fault</li>
+              <li>Claude phrases rule-based coaching</li>
+              <li>Curated pro clip lookup (not generated)</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3><span class="dot premium"></span> Premium (3D)</h3>
+            <ul>
+              <li>Lift 2D → 3D (MotionBERT / PoseMamba)</li>
+              <li>DTW align vs pro reference</li>
+              <li>CCD IK on user’s own bone lengths</li>
+              <li>Overlay video + Three.js viewer</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- SYSTEM -->
+      <section id="system">
+        <h2>2. System map</h2>
+        <p class="lead">
+          Five planes: client, always-on API, orchestration, serverless GPU, and data/storage.
+        </p>
+        <div class="diagram">
+          <pre class="mermaid">
+flowchart TB
+  subgraph CLIENT["📱 Mobile client"]
+    APP["React Native + Expo Bare"]
+    MLKIT["ML Kit live pose gate"]
+    CAM["vision-camera + outline"]
+    APP --- MLKIT
+    APP --- CAM
+  end
+
+  subgraph EDGE["⚡ Always-on"]
+    API["FastAPI · Fly.io"]
+    REDIS["Upstash Redis"]
+    API --- REDIS
+  end
+
+  subgraph ORCH["🔁 Orchestration"]
+    TEMP["Temporal\nTennisAnalysisWorkflow"]
+  end
+
+  subgraph GPU["🖥️ Serverless compute"]
+    MODAL["Modal GPU\nspolysis-pipeline"]
+  end
+
+  subgraph DATA["💾 Data plane"]
+    R2["Cloudflare R2"]
+    CDN["Cloudflare CDN"]
+    SB["Supabase Auth + Postgres"]
+    R2 --> CDN
+  end
+
+  CAM -->|"presigned PUT video"| R2
+  APP -->|"HTTPS + JWT"| API
+  API -->|"start workflow"| TEMP
+  TEMP -->|"run activities"| MODAL
+  MODAL -->|"read / write artifacts"| R2
+  MODAL -->|"internal callbacks"| API
+  API --> SB
+  CDN -->|"clips + results"| APP
+          </pre>
+        </div>
+        <p class="caption">Open this file in a browser — diagrams render via Mermaid. Scroll to zoom-friendly overflow on small screens.</p>
+      </section>
+
+      <!-- JOURNEY -->
+      <section id="journey">
+        <h2>3. User journey (simplified)</h2>
+        <p class="lead">What happens from “Record” to “Results,” layer by layer.</p>
+        <div class="stack-flow">
+          <div class="stack-step">
+            <div class="rail"><div class="node"></div><div class="line"></div></div>
+            <div class="body">
+              <strong>Phone — frame &amp; record</strong>
+              <span>Body outline + ML Kit: full body, side-on, distance OK → record (max 5 min)</span>
+            </div>
+          </div>
+          <div class="stack-step">
+            <div class="rail"><div class="node"></div><div class="line"></div></div>
+            <div class="body">
+              <strong>API — job + signed URL</strong>
+              <span>Create job in Supabase, mint R2 presigned PUT, start Temporal workflow</span>
+            </div>
+          </div>
+          <div class="stack-step">
+            <div class="rail"><div class="node"></div><div class="line"></div></div>
+            <div class="body">
+              <strong>R2 — store video</strong>
+              <span>App uploads bytes directly to <code>raw/&lt;job_id&gt;/video.mp4</code> (API never holds the file)</span>
+            </div>
+          </div>
+          <div class="stack-step">
+            <div class="rail"><div class="node"></div><div class="line"></div></div>
+            <div class="body">
+              <strong>Temporal + Modal — analyze</strong>
+              <span>ffmpeg frames → quality gate → RTMPose → free or premium branch</span>
+            </div>
+          </div>
+          <div class="stack-step">
+            <div class="rail"><div class="node free"></div></div>
+            <div class="body">
+              <strong>App — results</strong>
+              <span>Poll/push → text + pro clip (free) or overlay + 3D viewer (premium)</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- UPLOAD -->
+      <section id="upload">
+        <h2>4. Upload &amp; job kickoff</h2>
+        <p class="lead">
+          Signed URL = temporary permission slip so the phone writes straight into R2.
+        </p>
+        <div class="diagram">
+          <pre class="mermaid">
+sequenceDiagram
+  participant App as Phone app
+  participant API as FastAPI
+  participant DB as Supabase
+  participant R2 as Cloudflare R2
+  participant T as Temporal
+
+  App->>API: POST /uploads/url {tier}
+  API->>DB: insert job (pending)
+  API->>T: start TennisAnalysisWorkflow
+  API-->>App: upload_url, job_id, r2_key
+  App->>R2: PUT video (presigned, ~5 min)
+  Note over T,R2: Worker later downloads r2_key and runs pipeline
+          </pre>
+        </div>
+      </section>
+
+      <!-- PIPELINE -->
+      <section id="pipeline">
+        <h2>5. Shared ML front half</h2>
+        <p class="lead">
+          Both tiers share the same path until 2D keypoints exist. Quality failures stop before expensive work.
+        </p>
+        <div class="diagram">
+          <pre class="mermaid">
+flowchart LR
+  V["R2 video"] --> F["ffmpeg\n30 fps frames"]
+  F --> Q{"Quality gate\nblur · framing · occlusion"}
+  Q -->|fail| X["Notify re-record"]
+  Q -->|pass| P["RTMPose-x\n17 COCO keypoints"]
+  P --> BR{"Tier"}
+  BR -->|free| FREE["2D branch"]
+  BR -->|premium| PREM["3D branch"]
+
+  style X fill:#4a2020,stroke:#f05c5c,color:#fff
+  style P fill:#1a3a5c,stroke:#3d9cf0,color:#fff
+  style FREE fill:#1a3d2e,stroke:#3ecf8e,color:#fff
+  style PREM fill:#3d2e1a,stroke:#f0a03d,color:#fff
+          </pre>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <h3><span class="dot accent"></span> RTMPose-x</h3>
+            <p>Turns each frame into a 2D skeleton. Shared input for classification and (later) 3D lift. Not the phone ML Kit model.</p>
+          </div>
+          <div class="card">
+            <h3><span class="dot accent"></span> Quality gate</h3>
+            <p>Rejects blurry / poorly framed / occluded video before GPU-heavy stages burn money.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- TIERS -->
+      <section id="tiers">
+        <h2>6. Free vs Premium branches</h2>
+        <p class="lead">
+          Important: ST-GCN output does <strong style="color:var(--text)">not</strong> feed the 3D lifter.
+          Both branches start from RTMPose keypoints. Each node below shows the full name and what it does.
+        </p>
+        <div class="tier-split">
+          <div class="tier-panel free">
+            <h3>Free — Phase 1 (shipped)</h3>
+            <div class="flow-chip"><strong>Feature extraction</strong> — turn keypoints into joint angles, velocities, normalized positions</div>
+            <div class="flow-chip"><strong>Stroke segmentation</strong> — find the swing window using wrist speed peaks</div>
+            <div class="flow-chip"><strong>ST-GCN</strong> — Spatio-Temporal Graph Convolutional Network: classify stroke + fault from skeleton motion</div>
+            <div class="flow-chip"><strong>R2 clip lookup</strong> — Cloudflare R2: fetch curated pro reference video by stroke/fault</div>
+            <div class="flow-chip"><strong>Rules + Claude</strong> — rules pick findings; Claude API only rephrases into coaching text</div>
+            <div class="flow-chip"><strong>App result</strong> — show text recommendation + pro clip</div>
+          </div>
+          <div class="tier-panel premium">
+            <h3>Premium — Phase 2–3 (designed)</h3>
+            <div class="flow-chip"><strong>MotionBERT / PoseMamba</strong> — neural 3D pose lifters: 2D skeleton sequence → 3D joints over time</div>
+            <div class="flow-chip"><strong>Savitzky-Golay → SmoothNet</strong> — filter then motion-aware network: remove jitter from 3D path</div>
+            <div class="flow-chip"><strong>Normalize + phase detect</strong> — root-center/bone normalize; split prep → backswing → contact → follow-through</div>
+            <div class="flow-chip"><strong>Keyframe-anchored DTW</strong> — Dynamic Time Warping: align user vs pro motion despite different speeds</div>
+            <div class="flow-chip"><strong>CCD IK</strong> — Cyclic Coordinate Descent Inverse Kinematics: bend user’s joints toward pro angles</div>
+            <div class="flow-chip"><strong>OpenCV + ffmpeg + Three.js</strong> — draw overlay, encode H.264 video, interactive 3D viewer</div>
+          </div>
+        </div>
+
+        <div class="diagram" style="margin-top:1.25rem">
+          <pre class="mermaid">
+flowchart TD
+  KP["RTMPose-x<br/>Real-Time Multi-person Pose<br/>2D joints x,y,confidence per frame"]
+
+  subgraph FREE["Free tier — 2D"]
+    FE["Feature extraction<br/>angles, velocities,<br/>normalized positions"]
+    SEG["Stroke segmentation<br/>wrist velocity peaks<br/>find swing window"]
+    CL["ST-GCN<br/>Spatio-Temporal Graph<br/>Convolutional Network<br/>stroke type + fault label"]
+    LU["Reference clip lookup<br/>Cloudflare R2 curated pro clip"]
+    RE["Rules + Claude API<br/>rules select findings<br/>LLM phrases coaching text"]
+    OUTF["App result<br/>text + pro reference clip"]
+    FE --> SEG --> CL
+    CL --> LU --> OUTF
+    CL --> RE --> OUTF
+  end
+
+  subgraph PREM["Premium tier — 3D"]
+    L3["MotionBERT or PoseMamba<br/>3D pose lifting<br/>2D sequence → 3D joints"]
+    SG["Savitzky-Golay filter<br/>SciPy: remove gross noise"]
+    SN["SmoothNet<br/>motion-aware temporal smoother"]
+    NZ["Skeleton normalization<br/>bone lengths + root centering"]
+    PH["Phase detection<br/>prep · backswing · contact · follow-through"]
+    DTW["Keyframe-anchored DTW<br/>Dynamic Time Warping<br/>align user vs pro at contact"]
+    DL["Biomechanical deltas<br/>joint-angle + timing gaps vs pro"]
+    IK["CCD IK<br/>Cyclic Coordinate Descent<br/>Inverse Kinematics<br/>fix user joints only"]
+    OV["OpenCV + ffmpeg<br/>project skeleton on frames<br/>encode H.264 overlay video"]
+    VIEW["Three.js viewer<br/>rotate + scrub 3D correction"]
+    L3 --> SG --> SN --> NZ --> PH --> DTW --> DL --> IK --> OV --> VIEW
+  end
+
+  KP --> FE
+  KP --> L3
+  CL -.->|"optional: pick which pro reference"| DTW
+          </pre>
+        </div>
+        <p class="caption">Dashed edge: classification may help choose which pro reference to align against; it is not the lift input.</p>
+
+        <h3 style="font-size:1.05rem;margin:1.75rem 0 0.75rem;letter-spacing:-0.02em;">Glossary — every tech in this diagram</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Full form</th>
+              <th>What it does here</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>RTMPose-x</code></td>
+              <td>Real-Time Multi-person Pose (extra-large / max-accuracy variant), via MMPose</td>
+              <td>Finds 17 body joints on every frame as 2D <code>(x, y, confidence)</code>. Shared input for both branches.</td>
+            </tr>
+            <tr>
+              <td><code>Feature extraction</code></td>
+              <td>—</td>
+              <td>Converts raw keypoints into biomechanics-style numbers: joint angles, velocities, normalized positions for classification.</td>
+            </tr>
+            <tr>
+              <td><code>Stroke segmentation</code></td>
+              <td>Heuristic wrist-speed peak detection</td>
+              <td>Finds where the swing starts/ends in the video by looking for a spike in wrist velocity (contact / swing).</td>
+            </tr>
+            <tr>
+              <td><code>ST-GCN</code></td>
+              <td>Spatio-Temporal Graph Convolutional Network</td>
+              <td>Treats the skeleton as a graph (joints + bones) over time; outputs stroke type (e.g. serve) and fault label (e.g. arm_only). Learns from labeled examples, not built-in tennis knowledge.</td>
+            </tr>
+            <tr>
+              <td><code>R2</code> lookup</td>
+              <td>Cloudflare R2 (object storage)</td>
+              <td>Looks up a pre-uploaded pro teaching clip by stroke/fault key. Not AI video generation.</td>
+            </tr>
+            <tr>
+              <td><code>Rules + Claude</code></td>
+              <td>Rule thresholds + Anthropic Claude API</td>
+              <td>Code decides <em>what</em> is wrong from metrics/labels; Claude only rewrites that into natural coaching language.</td>
+            </tr>
+            <tr>
+              <td><code>MotionBERT</code></td>
+              <td>Motion Bidirectional Encoder Representations from Transformers (human motion model)</td>
+              <td>Candidate 3D lifter: takes a sequence of 2D poses and predicts 3D joint positions over time (fast regression, not slow optimization).</td>
+            </tr>
+            <tr>
+              <td><code>PoseMamba</code></td>
+              <td>Pose estimation model using Mamba (state-space sequence model)</td>
+              <td>Other 3D-lift candidate; same job as MotionBERT. Both fine-tuned on tennis; winner ships.</td>
+            </tr>
+            <tr>
+              <td><code>Savitzky-Golay</code></td>
+              <td>Savitzky–Golay filter (SciPy)</td>
+              <td>First smoothing pass: removes gross noise/jitter from the 3D joint paths while keeping the overall shape of the motion.</td>
+            </tr>
+            <tr>
+              <td><code>SmoothNet</code></td>
+              <td>SmoothNet (learned human-motion temporal smoother)</td>
+              <td>Second pass: understands human motion structure; produces cleaner trajectories so the overlay doesn’t look broken.</td>
+            </tr>
+            <tr>
+              <td><code>Skeleton normalization</code></td>
+              <td>—</td>
+              <td>Root-centers the body and normalizes bone lengths so comparison isn’t “you’re taller than the pro.”</td>
+            </tr>
+            <tr>
+              <td><code>Phase detection</code></td>
+              <td>—</td>
+              <td>Labels stroke phases: preparation, backswing, contact, follow-through — so deltas are reported per phase.</td>
+            </tr>
+            <tr>
+              <td><code>DTW</code></td>
+              <td>Dynamic Time Warping (keyframe-anchored; Sakoe–Chiba band)</td>
+              <td>Stretches/compresses time to align your swing to the pro’s even if speeds differ; locked at contact (wrist velocity peak).</td>
+            </tr>
+            <tr>
+              <td><code>Biomechanical deltas</code></td>
+              <td>—</td>
+              <td>Numeric gaps vs pro, e.g. “hip rotation at contact: you 34°, pro 52°.” Phase 2 validates these before rendering.</td>
+            </tr>
+            <tr>
+              <td><code>CCD IK</code></td>
+              <td>Cyclic Coordinate Descent Inverse Kinematics</td>
+              <td>Adjusts only flawed joints in the flawed time window toward target angles, preserving <em>your</em> bone lengths (never pastes the pro’s body).</td>
+            </tr>
+            <tr>
+              <td><code>OpenCV</code></td>
+              <td>Open Source Computer Vision Library</td>
+              <td>Projects the corrected 3D skeleton back onto the original video frames as a distinct overlay.</td>
+            </tr>
+            <tr>
+              <td><code>ffmpeg</code></td>
+              <td>Fast Forward Moving Picture Experts Group (media toolkit)</td>
+              <td>Encodes the overlaid frames into an H.264 result video for the app/CDN.</td>
+            </tr>
+            <tr>
+              <td><code>Three.js</code></td>
+              <td>Three.js (WebGL 3D library for the browser)</td>
+              <td>Interactive premium viewer in the app: rotate and scrub the corrected 3D skeleton.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- SEQUENCE -->
+      <section id="sequence">
+        <h2>7. Full Phase 1 sequence</h2>
+        <p class="lead">Durable Temporal workflow with retries; Modal/workers execute GPU and CPU stages.</p>
+        <div class="diagram">
+          <pre class="mermaid">
+sequenceDiagram
+  participant U as User
+  participant API as FastAPI
+  participant R2 as R2
+  participant T as Temporal
+  participant M as Pipeline worker
+  participant DB as Supabase
+
+  U->>API: request upload URL
+  API->>DB: job = pending
+  API->>T: start workflow
+  API-->>U: signed URL + job_id
+  U->>R2: upload video
+  T->>M: download video
+  M->>M: extract frames
+  M->>M: RTMPose-x
+  M->>M: quality gate
+  alt fail
+    M->>API: reject
+    API->>DB: rejected
+  else pass
+    M->>M: features → segment → classify
+    M->>R2: artifacts + clip URL
+    M->>M: recommend text
+    M->>API: complete
+    API->>DB: store result
+    API-->>U: Result screen
+  end
+          </pre>
+        </div>
+      </section>
+
+      <!-- REPO -->
+      <section id="repo">
+        <h2>8. Repository map</h2>
+        <div class="diagram">
+          <pre class="mermaid">
+flowchart LR
+  ROOT["spolysis/"]
+  ROOT --> APP["/app\nReact Native"]
+  ROOT --> API["/api\nFastAPI"]
+  ROOT --> PIP["/pipeline\nstages · Temporal · Modal"]
+  ROOT --> DATA["/data\nschema · clip catalog"]
+  ROOT --> DOCS["/docs\nthis architecture"]
+
+  APP --> SCR["screens · camera · upload"]
+  API --> RT["auth · uploads · jobs · internal"]
+  PIP --> ST["extract → pose → quality → …"]
+          </pre>
+        </div>
+      </section>
+
+      <!-- STACK -->
+      <section id="stack">
+        <h2>9. Tech stack</h2>
+        <table>
+          <thead>
+            <tr><th>Layer</th><th>Choice</th><th>Role</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Mobile</td><td>React Native + Expo Bare</td><td>Client, EAS builds, OTA JS updates</td></tr>
+            <tr><td>Live pose gate</td><td>ML Kit</td><td>Framing before record</td></tr>
+            <tr><td>API</td><td>FastAPI on Fly.io</td><td>Auth, jobs, signed URLs</td></tr>
+            <tr><td>Orchestration</td><td>Temporal</td><td>Durable multi-step jobs</td></tr>
+            <tr><td>GPU</td><td>Modal (A10G)</td><td>Per-second serverless inference</td></tr>
+            <tr><td>Storage</td><td>Cloudflare R2 + CDN</td><td>Videos, clips, artifacts</td></tr>
+            <tr><td>DB / Auth</td><td>Supabase</td><td>Users, jobs, results</td></tr>
+            <tr><td>Cache</td><td>Upstash Redis</td><td>Status + rate limits</td></tr>
+            <tr><td>2D pose</td><td>RTMPose-x</td><td>Server skeleton per frame</td></tr>
+            <tr><td>Classify</td><td>ST-GCN</td><td>Stroke + fault labels</td></tr>
+            <tr><td>3D lift</td><td>MotionBERT / PoseMamba</td><td>2D → 3D sequence</td></tr>
+            <tr><td>Align / fix</td><td>DTW + CCD IK</td><td>Compare + correct user skeleton</td></tr>
+            <tr><td>Subscriptions</td><td>RevenueCat</td><td>Premium entitlement</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- STATUS -->
+      <section id="status">
+        <h2>10. Build status</h2>
+        <div class="diagram">
+          <pre class="mermaid">
+flowchart LR
+  P1["Phase 1\n2D free E2E\nCODE DONE"]
+  P2["Phase 2\n3D + DTW + deltas\nDESIGNED"]
+  P3["Phase 3\nIK + overlay + viewer\nDESIGNED"]
+  P4["Phase 4\nHardening\nLATER"]
+  P1 --> P2 --> P3 --> P4
+
+  style P1 fill:#1a3d2e,stroke:#3ecf8e,color:#fff
+  style P2 fill:#3d2e1a,stroke:#f0a03d,color:#fff
+  style P3 fill:#3d2e1a,stroke:#f0a03d,color:#fff
+  style P4 fill:#243040,stroke:#8b9aab,color:#fff
+          </pre>
+        </div>
+        <div class="grid-2">
+          <div class="card">
+            <h3><span class="dot free"></span> Blockers to go live (Phase 1)</h3>
+            <ul>
+              <li>Provision Supabase, R2, Temporal, Modal</li>
+              <li>Labeled tennis data → train ST-GCN</li>
+              <li>Upload reference clips to R2</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3><span class="dot premium"></span> Premium still needs</h3>
+            <ul>
+              <li>Pro 3D reference motions</li>
+              <li>Fine-tune + pick MotionBERT vs PoseMamba</li>
+              <li>IK, overlay encode, Three.js viewer</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <footer>
+        Companion prose doc: <code>docs/architecture.md</code> · Master decisions: <code>CLAUDE.md</code><br />
+        Diagrams render client-side with Mermaid — open this HTML file locally or serve the <code>docs/</code> folder.
+      </footer>
+    </main>
+  </div>
+
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "dark",
+      securityLevel: "loose",
+      flowchart: { curve: "basis", padding: 16 },
+      sequence: { actorMargin: 24, messageMargin: 40 },
+      themeVariables: {
+        primaryColor: "#1a3a5c",
+        primaryTextColor: "#e8eef4",
+        primaryBorderColor: "#3d9cf0",
+        lineColor: "#8b9aab",
+        secondaryColor: "#243040",
+        tertiaryColor: "#1a222c",
+        background: "#1a222c",
+        mainBkg: "#1a222c",
+        nodeBorder: "#3d9cf0",
+        clusterBkg: "#141a22",
+        clusterBorder: "#2e3d4f",
+        titleColor: "#e8eef4",
+        actorBkg: "#243040",
+        actorBorder: "#3d9cf0",
+        actorTextColor: "#e8eef4",
+        signalColor: "#e8eef4",
+        signalTextColor: "#e8eef4",
+        labelBoxBkgColor: "#243040",
+        labelTextColor: "#e8eef4",
+        noteBkgColor: "#243040",
+        noteTextColor: "#e8eef4"
+      }
+    });
+  </script>
+</body>
+</html>

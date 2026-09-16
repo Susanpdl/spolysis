@@ -44,6 +44,18 @@ class JobCompleteRequest(BaseModel):
     reference_clip_url: str | None = None
 
 
+class JobPremiumCompleteRequest(BaseModel):
+    stroke_type: str
+    fault_label: str | None = None
+    confidence: float
+    recommendation: str
+    overlay_video_url: str | None = None
+    skeleton_3d_url: str | None = None
+    delta_summary: dict | None = None
+    fault_joints: list[str] | None = None
+    reference_clip_url: str | None = None
+
+
 class JobFailRequest(BaseModel):
     error_message: str
 

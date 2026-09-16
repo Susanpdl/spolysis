@@ -37,6 +37,9 @@ pose_image = (
         "anthropic==0.34.2",
         "upstash-redis==1.3.0",
         "temporalio==1.7.1",
+        "dtaidistance",
+        "einops",
+        "timm",
     )
     # Final layer: re-pin numpy, build xtcocotools from source, and install the mmcv
     # CUDA wheel via a DIRECT URL (not -f find-links). Direct URL pip installs bypass
@@ -65,6 +68,15 @@ pose_image = (
         "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/"
         "rtmdet_m_8xb32-100e_coco-obj365-person-235e8209.pth",
     )
+    .run_commands(
+        # MotionBERT: clone repo and download H36M lite weights
+        "git clone --depth=1 https://github.com/Walter0807/MotionBERT.git /opt/motionbert || true",
+        "pip install einops timm --quiet || true",
+        "mkdir -p /opt/weights/motionbert /opt/weights/smoothnet",
+        "wget -q --show-progress -O /opt/weights/motionbert/MB_ft_h36m.bin "
+        "'https://github.com/Walter0807/MotionBERT/releases/download/v1.0/MotionBERT_lite_MB_ft_h36m.bin' || true",
+    )
+    .env({"PYTHONPATH": "/opt/motionbert"})
     .add_local_python_source("pipeline")
 )
 
@@ -87,10 +99,16 @@ def _notify(path: str, body: dict, internal_api_url: str, internal_secret: str) 
     timeout=600,
     secrets=[PIPELINE_SECRET],
 )
-def run_full_pipeline(job_id: str, r2_key: str, tier: str) -> dict:
+def run_full_pipeline(
+    job_id: str,
+    r2_key: str,
+    tier: str,
+    reference_motion_dir: str = "data/reference_motion",
+) -> dict:
     """
-    Run the complete Phase 1 pipeline for a single job on Modal GPU.
+    Run the complete pipeline for a single job on Modal GPU.
     Called directly via Modal (not through Temporal) for simple invocations.
+    Branches on tier: "free"/"2d" runs the 2D path; "premium"/"3d" runs the full 3D path.
     """
     import tempfile
     import numpy as np
@@ -102,7 +120,7 @@ def run_full_pipeline(job_id: str, r2_key: str, tier: str) -> dict:
     from pipeline.stages.classify import classify_stroke
     from pipeline.stages.lookup import lookup_reference_clip
     from pipeline.stages.recommend import generate_recommendation
-    from pipeline.r2 import download_file, put_json
+    from pipeline.r2 import download_file, put_json, upload_file
     from pipeline.config import settings
 
     def notify(path: str, body: dict) -> None:
@@ -119,7 +137,10 @@ def run_full_pipeline(job_id: str, r2_key: str, tier: str) -> dict:
     # 3. RTMPose-x 2D pose estimation
     pose_result = run_pose_estimation(frame_dir)
     keypoints = pose_result.keypoints  # (T, 17, 3)
-    put_json(f"artifacts/{job_id}/keypoints_2d.json", {"keypoints": keypoints.tolist()})
+    keypoints_payload: dict = {"keypoints": keypoints.tolist()}
+    if pose_result.bboxes is not None:
+        keypoints_payload["bboxes"] = pose_result.bboxes.tolist()
+    put_json(f"artifacts/{job_id}/keypoints_2d.json", keypoints_payload)
 
     # 4. Quality gate
     quality = check_quality(frame_dir, keypoints)
@@ -127,46 +148,172 @@ def run_full_pipeline(job_id: str, r2_key: str, tier: str) -> dict:
         notify(f"/internal/jobs/{job_id}/reject", {"rejection_reason": quality.reason})
         return {"status": "rejected", "reason": quality.reason}
 
-    # 5. Features -> segment -> PoseC3D classify (heuristic if model not loaded)
-    features = extract_features(keypoints)
-    segment = segment_strokes(features)
-    if segment is None:
-        from pipeline.stages.classify import ClassificationResult
-        classification = ClassificationResult(
-            stroke_type="forehand", fault_label=None, confidence=0.5, method="heuristic"
+    if tier in ("premium", "3d"):
+        # --- Full 3D premium path ---
+        from pipeline.stages.pose2d import Pose2DResult
+        from pipeline.stages.lift import lift_to_3d
+        from pipeline.stages.smooth3d import smooth_3d
+        from pipeline.stages.normalize3d import normalize_skeleton
+        from pipeline.stages.phases import detect_phases
+        from pipeline.stages.align import align_to_reference
+        from pipeline.stages.delta import compute_deltas
+        from pipeline.stages.ik import apply_ik_correction
+        from pipeline.stages.render import render_overlay
+
+        # Reconstruct bboxes if not available on pose_result
+        if pose_result.bboxes is not None:
+            bboxes = pose_result.bboxes
+        else:
+            T = keypoints.shape[0]
+            bboxes = np.zeros((T, 4), dtype=np.float32)
+            for t in range(T):
+                frame_kps = keypoints[t]
+                visible = frame_kps[frame_kps[:, 2] > 0.1]
+                if len(visible) > 0:
+                    bboxes[t] = [visible[:, 0].min(), visible[:, 1].min(),
+                                 visible[:, 0].max(), visible[:, 1].max()]
+
+        pose2d = Pose2DResult(keypoints=keypoints, bboxes=bboxes)
+
+        # 3D lifting
+        checkpoint = (
+            settings.motionbert_checkpoint
+            if settings.lift_model == "motionbert"
+            else settings.posemamba_checkpoint
         )
+        lift_result = lift_to_3d(pose2d, model=settings.lift_model, checkpoint=checkpoint)
+
+        # Smoothing
+        smooth_result = smooth_3d(lift_result, smoothnet_checkpoint=settings.smoothnet_checkpoint)
+
+        # Normalization
+        normalized = normalize_skeleton(smooth_result)
+
+        # Feature extraction + classification for stroke type
+        features = extract_features(keypoints)
+        segment = segment_strokes(features)
+        if segment is None:
+            from pipeline.stages.classify import ClassificationResult
+            classification = ClassificationResult(
+                stroke_type="forehand", fault_label=None, confidence=0.5, method="heuristic"
+            )
+            contact_frame = keypoints.shape[0] // 2
+        else:
+            classification = classify_stroke(
+                segment,
+                stroke_model_path=settings.posec3d_stroke_model,
+                fault_model_path=settings.posec3d_fault_model,
+            )
+            contact_frame = segment.contact_frame if hasattr(segment, "contact_frame") else keypoints.shape[0] // 2
+
+        stroke_type = classification.stroke_type
+        fault_label = classification.fault_label
+        confidence = classification.confidence
+
+        # Phase detection
+        phases = detect_phases(normalized, stroke_type=stroke_type, contact_frame=contact_frame)
+
+        # DTW alignment vs pro reference motion
+        alignment = align_to_reference(
+            normalized,
+            phases,
+            stroke_type=stroke_type,
+            reference_motion_dir=reference_motion_dir,
+        )
+
+        # Biomechanical delta computation
+        delta_table = compute_deltas(alignment)
+
+        # CCD IK correction (flawed joints only)
+        corrected = apply_ik_correction(normalized, delta_table)
+
+        # Render overlay video onto original frames
+        overlay_tmp = tempfile.mktemp(suffix=".mp4", prefix=f"spolysis_overlay_{job_id}_")
+        render_overlay(corrected, frame_dir, output_path=overlay_tmp)
+
+        # Upload overlay video to R2
+        overlay_r2_key = f"results/{job_id}/overlay.mp4"
+        upload_file(overlay_tmp, overlay_r2_key, content_type="video/mp4")
+
+        # Upload corrected 3D skeleton JSON for Three.js viewer
+        skeleton_r2_key = f"results/{job_id}/skeleton_3d.json"
+        put_json(skeleton_r2_key, {
+            "job_id": job_id,
+            "stroke_type": stroke_type,
+            "fps": 30,
+            "frames": corrected.sequence.tolist() if hasattr(corrected.sequence, "tolist") else corrected.sequence,
+        })
+
+        # Coaching recommendation
+        first_fault_joint = delta_table.fault_joints[0] if delta_table.fault_joints else fault_label
+        recommendation = generate_recommendation(stroke_type, first_fault_joint, confidence)
+
+        r2_public_url = settings.r2_public_url.rstrip("/")
+        result = {
+            "job_id": job_id,
+            "stroke_type": stroke_type,
+            "fault_label": first_fault_joint,
+            "confidence": confidence,
+            "recommendation": recommendation,
+            "overlay_video_url": f"{r2_public_url}/results/{job_id}/overlay.mp4",
+            "skeleton_3d_url": f"{r2_public_url}/results/{job_id}/skeleton_3d.json",
+            "delta_summary": delta_table.summary,
+            "fault_joints": delta_table.fault_joints,
+        }
+
+        notify(f"/internal/jobs/{job_id}/complete_premium", {
+            "stroke_type": stroke_type,
+            "fault_label": first_fault_joint,
+            "confidence": confidence,
+            "recommendation": recommendation,
+            "overlay_video_url": result["overlay_video_url"],
+            "skeleton_3d_url": result["skeleton_3d_url"],
+            "delta_summary": delta_table.summary,
+            "fault_joints": delta_table.fault_joints,
+        })
+
+        return result
+
     else:
-        classification = classify_stroke(
-            segment,
-            stroke_model_path=settings.posec3d_stroke_model,
-            fault_model_path=settings.posec3d_fault_model,
+        # --- Free tier 2D path ---
+        features = extract_features(keypoints)
+        segment = segment_strokes(features)
+        if segment is None:
+            from pipeline.stages.classify import ClassificationResult
+            classification = ClassificationResult(
+                stroke_type="forehand", fault_label=None, confidence=0.5, method="heuristic"
+            )
+        else:
+            classification = classify_stroke(
+                segment,
+                stroke_model_path=settings.posec3d_stroke_model,
+                fault_model_path=settings.posec3d_fault_model,
+            )
+
+        reference_clip_url = lookup_reference_clip(classification.stroke_type, classification.fault_label)
+        recommendation = generate_recommendation(
+            classification.stroke_type, classification.fault_label, classification.confidence
         )
 
-    # 6. Reference clip lookup + coaching text
-    reference_clip_url = lookup_reference_clip(classification.stroke_type, classification.fault_label)
-    recommendation = generate_recommendation(
-        classification.stroke_type, classification.fault_label, classification.confidence
-    )
+        result = {
+            "job_id": job_id,
+            "stroke_type": classification.stroke_type,
+            "fault_label": classification.fault_label,
+            "confidence": classification.confidence,
+            "recommendation": recommendation,
+            "reference_clip_url": reference_clip_url,
+        }
+        put_json(f"results/{job_id}/result.json", result)
 
-    result = {
-        "job_id": job_id,
-        "stroke_type": classification.stroke_type,
-        "fault_label": classification.fault_label,
-        "confidence": classification.confidence,
-        "recommendation": recommendation,
-        "reference_clip_url": reference_clip_url,
-    }
-    put_json(f"results/{job_id}/result.json", result)
+        notify(f"/internal/jobs/{job_id}/complete", {
+            "stroke_type": result["stroke_type"],
+            "fault_label": result["fault_label"],
+            "confidence": result["confidence"],
+            "recommendation": result["recommendation"],
+            "reference_clip_url": result["reference_clip_url"],
+        })
 
-    notify(f"/internal/jobs/{job_id}/complete", {
-        "stroke_type": result["stroke_type"],
-        "fault_label": result["fault_label"],
-        "confidence": result["confidence"],
-        "recommendation": result["recommendation"],
-        "reference_clip_url": result["reference_clip_url"],
-    })
-
-    return result
+        return result
 
 
 @app.function(

@@ -14,6 +14,7 @@ with workflow.unsafe.imports_passed_through():
         extract_features_activity,
         classify_activity,
         generate_result_activity,
+        run_premium_pipeline_activity,
         _notify_api,
     )
 
@@ -67,29 +68,36 @@ class TennisAnalysisWorkflow:
             if not passed:
                 return  # API already notified of rejection
 
-            # Feature extraction
-            features_key = await workflow.execute_activity(
-                extract_features_activity,
-                args=[keypoints_key, job_id],
-                start_to_close_timeout=timedelta(minutes=2),
-                retry_policy=_RETRY,
-            )
+            if p.tier == "premium":
+                # Full 3D premium path - activity handles its own API notification
+                await workflow.execute_activity(
+                    run_premium_pipeline_activity,
+                    args=[keypoints_key, frame_dir, job_id],
+                    start_to_close_timeout=timedelta(minutes=20),
+                    retry_policy=_RETRY,
+                )
+            else:
+                # Free tier path: features -> classify -> generate result + notify API
+                features_key = await workflow.execute_activity(
+                    extract_features_activity,
+                    args=[keypoints_key, job_id],
+                    start_to_close_timeout=timedelta(minutes=2),
+                    retry_policy=_RETRY,
+                )
 
-            # Classification
-            classification = await workflow.execute_activity(
-                classify_activity,
-                args=[features_key, job_id],
-                start_to_close_timeout=timedelta(minutes=3),
-                retry_policy=_RETRY,
-            )
+                classification = await workflow.execute_activity(
+                    classify_activity,
+                    args=[features_key, job_id],
+                    start_to_close_timeout=timedelta(minutes=3),
+                    retry_policy=_RETRY,
+                )
 
-            # Generate result + notify API
-            await workflow.execute_activity(
-                generate_result_activity,
-                args=[classification, job_id],
-                start_to_close_timeout=timedelta(minutes=2),
-                retry_policy=_RETRY,
-            )
+                await workflow.execute_activity(
+                    generate_result_activity,
+                    args=[classification, job_id],
+                    start_to_close_timeout=timedelta(minutes=2),
+                    retry_policy=_RETRY,
+                )
 
         except ActivityError as e:
             workflow.logger.error("workflow_activity_failed", job_id=job_id, error=str(e))

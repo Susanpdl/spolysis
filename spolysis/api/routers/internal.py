@@ -2,7 +2,7 @@ from __future__ import annotations
 import structlog
 from fastapi import APIRouter, Depends
 from api.auth import verify_internal_token
-from api.models.job import JobCompleteRequest, JobFailRequest, JobRejectRequest
+from api.models.job import JobCompleteRequest, JobFailRequest, JobRejectRequest, JobPremiumCompleteRequest
 from api.database import service_client
 from api.redis_client import invalidate_job_cache
 
@@ -32,6 +32,25 @@ async def complete_job(job_id: str, body: JobCompleteRequest):
         "confidence": body.confidence,
         "recommendation": body.recommendation,
         "reference_clip_url": body.reference_clip_url,
+    }).execute())
+    _safe_db(lambda: service_client.table("jobs").update({"status": "completed"}).eq("id", job_id).execute())
+    _safe_db(lambda: invalidate_job_cache(job_id))
+    return {"status": "ok"}
+
+
+@router.post("/jobs/{job_id}/complete_premium", status_code=200)
+async def complete_premium_job(job_id: str, body: JobPremiumCompleteRequest):
+    _safe_db(lambda: service_client.table("results").insert({
+        "job_id": job_id,
+        "stroke_type": body.stroke_type,
+        "fault_label": body.fault_label,
+        "confidence": body.confidence,
+        "recommendation": body.recommendation,
+        "reference_clip_url": body.reference_clip_url,
+        "overlay_video_url": body.overlay_video_url,
+        "skeleton_3d_url": body.skeleton_3d_url,
+        "delta_summary": body.delta_summary,
+        "fault_joints": body.fault_joints,
     }).execute())
     _safe_db(lambda: service_client.table("jobs").update({"status": "completed"}).eq("id", job_id).execute())
     _safe_db(lambda: invalidate_job_cache(job_id))

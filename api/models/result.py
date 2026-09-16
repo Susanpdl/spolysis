@@ -11,4 +11,7 @@ class ResultResponse(BaseModel):
     recommendation: str
     reference_clip_url: str | None = None
     overlay_video_url: str | None = None
+    skeleton_3d_url: str | None = None
+    delta_summary: dict | None = None
+    fault_joints: list[str] | None = None
     created_at: datetime

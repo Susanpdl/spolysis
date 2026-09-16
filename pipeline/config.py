@@ -26,6 +26,17 @@ class Settings(BaseSettings):
     posec3d_stroke_model: str | None = None
     posec3d_fault_model: str | None = None
 
+    # 3D lifting model
+    lift_model: str = "motionbert"  # "motionbert" | "posemamba"
+    motionbert_checkpoint: str | None = None   # None = use default /opt/weights/motionbert/MB_ft_h36m.bin
+    posemamba_checkpoint: str | None = None
+
+    # SmoothNet
+    smoothnet_checkpoint: str | None = None   # None = skip SmoothNet, use SavGol only
+
+    # Reference motion directory for DTW alignment
+    reference_motion_dir: str = "data/reference_motion"
+
     sentry_dsn: str = ""
 
 

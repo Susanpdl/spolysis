@@ -61,10 +61,13 @@ async def run_pose_estimation_activity(frame_dir: str, job_id: str) -> str:
 
     # Save to R2 as JSON (convert ndarray to list)
     r2_key = f"artifacts/{job_id}/keypoints_2d.json"
-    put_json(r2_key, {
+    payload: dict = {
         "keypoints": result.keypoints.tolist(),
         "frame_count": result.keypoints.shape[0],
-    })
+    }
+    if result.bboxes is not None:
+        payload["bboxes"] = result.bboxes.tolist()
+    put_json(r2_key, payload)
     log.info("keypoints_saved", r2_key=r2_key, shape=result.keypoints.shape)
     return r2_key
 
@@ -185,4 +188,156 @@ async def generate_result_activity(classification: dict, job_id: str) -> dict:
     })
 
     log.info("job_completed", job_id=job_id, stroke=stroke_type, fault=fault_label)
+    return result
+
+
+@activity.defn
+async def run_premium_pipeline_activity(
+    keypoints_r2_key: str, frame_dir: str, job_id: str
+) -> dict:
+    """
+    Run the full 3D premium pipeline for a job.
+    Downloads 2D keypoints and bboxes from R2, runs all premium stages,
+    uploads result video to R2, notifies the API.
+    Returns result dict.
+    """
+    import tempfile
+    from pipeline.r2 import get_json, put_json, upload_file
+    from pipeline.stages.pose2d import Pose2DResult
+    from pipeline.stages.features import extract_features
+    from pipeline.stages.segment import segment_strokes
+    from pipeline.stages.classify import classify_stroke
+    from pipeline.stages.recommend import generate_recommendation
+    from pipeline.stages.lift import lift_to_3d
+    from pipeline.stages.smooth3d import smooth_3d
+    from pipeline.stages.normalize3d import normalize_skeleton
+    from pipeline.stages.phases import detect_phases
+    from pipeline.stages.align import align_to_reference
+    from pipeline.stages.delta import compute_deltas
+    from pipeline.stages.ik import apply_ik_correction
+    from pipeline.stages.render import render_overlay
+
+    log.info("premium_pipeline_start", job_id=job_id)
+
+    # 1. Download 2D keypoints and bboxes from R2
+    data = get_json(keypoints_r2_key)
+    keypoints = np.array(data["keypoints"], dtype=np.float32)
+
+    # Reconstruct bboxes: use stored values if present, otherwise estimate from keypoints
+    if "bboxes" in data:
+        bboxes = np.array(data["bboxes"], dtype=np.float32)
+    else:
+        # Estimate per-frame bbox as the bounding box of visible keypoints (confidence > 0)
+        T = keypoints.shape[0]
+        bboxes = np.zeros((T, 4), dtype=np.float32)
+        for t in range(T):
+            frame_kps = keypoints[t]  # (17, 3) - x, y, conf
+            visible = frame_kps[frame_kps[:, 2] > 0.1]
+            if len(visible) > 0:
+                x_min, y_min = visible[:, 0].min(), visible[:, 1].min()
+                x_max, y_max = visible[:, 0].max(), visible[:, 1].max()
+                bboxes[t] = [x_min, y_min, x_max, y_max]
+
+    pose_result = Pose2DResult(keypoints=keypoints, bboxes=bboxes)
+
+    # 2. 3D lifting
+    checkpoint = (
+        settings.motionbert_checkpoint
+        if settings.lift_model == "motionbert"
+        else settings.posemamba_checkpoint
+    )
+    lift_result = lift_to_3d(pose_result, model=settings.lift_model, checkpoint=checkpoint)
+    log.info("lift_complete", job_id=job_id)
+
+    # 3. Temporal smoothing (SavGol + SmoothNet)
+    smooth_result = smooth_3d(lift_result, smoothnet_checkpoint=settings.smoothnet_checkpoint)
+    log.info("smooth_complete", job_id=job_id)
+
+    # 4. Skeleton normalization
+    normalized = normalize_skeleton(smooth_result)
+    log.info("normalize_complete", job_id=job_id)
+
+    # 5. Feature extraction + stroke segmentation for stroke type and contact frame
+    features = extract_features(keypoints)
+    segment = segment_strokes(features)
+
+    if segment is None:
+        from pipeline.stages.classify import ClassificationResult
+        classification = ClassificationResult(
+            stroke_type="forehand", fault_label=None, confidence=0.5, method="heuristic"
+        )
+        contact_frame = keypoints.shape[0] // 2
+    else:
+        classification = classify_stroke(
+            segment,
+            stroke_model_path=settings.posec3d_stroke_model,
+            fault_model_path=settings.posec3d_fault_model,
+        )
+        contact_frame = segment.contact_frame if hasattr(segment, "contact_frame") else keypoints.shape[0] // 2
+
+    stroke_type = classification.stroke_type
+    fault_label = classification.fault_label
+    confidence = classification.confidence
+
+    # 6. Phase detection
+    phases = detect_phases(normalized, stroke_type=stroke_type, contact_frame=contact_frame)
+    log.info("phases_detected", job_id=job_id)
+
+    # 7. DTW alignment vs pro reference motion
+    alignment = align_to_reference(
+        normalized,
+        phases,
+        stroke_type=stroke_type,
+        reference_motion_dir=settings.reference_motion_dir,
+    )
+    log.info("alignment_complete", job_id=job_id)
+
+    # 8. Biomechanical delta computation
+    delta_table = compute_deltas(alignment)
+    log.info("deltas_computed", job_id=job_id, fault_joints=delta_table.fault_joints)
+
+    # 9. CCD IK correction on user's skeleton (flawed joints only)
+    corrected = apply_ik_correction(normalized, delta_table)
+    log.info("ik_correction_complete", job_id=job_id)
+
+    # 10. Render overlay video onto original frames
+    overlay_tmp = tempfile.mktemp(suffix=".mp4", prefix=f"spolysis_overlay_{job_id}_")
+    render_overlay(corrected, frame_dir, output_path=overlay_tmp)
+    log.info("render_complete", job_id=job_id)
+
+    # 11. Upload rendered overlay video to R2
+    overlay_r2_key = f"results/{job_id}/overlay.mp4"
+    upload_file(overlay_tmp, overlay_r2_key, content_type="video/mp4")
+    log.info("overlay_uploaded", job_id=job_id, r2_key=overlay_r2_key)
+
+    # 12. Upload corrected 3D skeleton JSON for Three.js viewer
+    skeleton_r2_key = f"results/{job_id}/skeleton_3d.json"
+    skeleton_data = {
+        "job_id": job_id,
+        "stroke_type": stroke_type,
+        "fps": 30,
+        "frames": corrected.sequence.tolist() if hasattr(corrected.sequence, "tolist") else corrected.sequence,
+    }
+    put_json(skeleton_r2_key, skeleton_data)
+
+    # 13. Coaching recommendation
+    first_fault_joint = delta_table.fault_joints[0] if delta_table.fault_joints else fault_label
+    recommendation = generate_recommendation(stroke_type, first_fault_joint, confidence)
+
+    # 14. Notify API
+    r2_public_url = settings.r2_public_url.rstrip("/")
+    result = {
+        "stroke_type": stroke_type,
+        "fault_label": first_fault_joint,
+        "confidence": confidence,
+        "recommendation": recommendation,
+        "overlay_video_url": f"{r2_public_url}/results/{job_id}/overlay.mp4",
+        "skeleton_3d_url": f"{r2_public_url}/results/{job_id}/skeleton_3d.json",
+        "delta_summary": delta_table.summary,
+        "fault_joints": delta_table.fault_joints,
+    }
+
+    await _notify_api(f"/internal/jobs/{job_id}/complete_premium", result)
+    log.info("premium_job_completed", job_id=job_id, stroke=stroke_type, fault_joints=delta_table.fault_joints)
+
     return result

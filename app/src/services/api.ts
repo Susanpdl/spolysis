@@ -68,5 +68,8 @@ export interface Result {
   recommendation: string;
   reference_clip_url?: string;
   overlay_video_url?: string;
+  skeleton_3d_url?: string;
+  delta_summary?: Record<string, number>;
+  fault_joints?: string[];
   created_at: string;
 }

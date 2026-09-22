@@ -100,5 +100,8 @@ async def get_job_result(job_id: str, user: dict = Depends(get_current_user)):
         recommendation=r["recommendation"],
         reference_clip_url=r.get("reference_clip_url"),
         overlay_video_url=r.get("overlay_video_url"),
+        skeleton_3d_url=r.get("skeleton_3d_url"),
+        delta_summary=r.get("delta_summary"),
+        fault_joints=r.get("fault_joints"),
         created_at=datetime.fromisoformat(r["created_at"]),
     )

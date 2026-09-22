@@ -12,6 +12,7 @@ from pipeline.temporal.activities import (
     extract_features_activity,
     classify_activity,
     generate_result_activity,
+    run_premium_pipeline_activity,
     _notify_api,
 )
 import structlog
@@ -39,6 +40,7 @@ async def main() -> None:
             extract_features_activity,
             classify_activity,
             generate_result_activity,
+            run_premium_pipeline_activity,
             _notify_api,
         ],
     )

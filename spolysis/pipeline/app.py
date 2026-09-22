@@ -78,6 +78,7 @@ pose_image = (
     )
     .env({"PYTHONPATH": "/opt/motionbert"})
     .add_local_python_source("pipeline")
+    .add_local_dir("data/reference_motion", remote_path="/opt/reference_motion")
 )
 
 PIPELINE_SECRET = modal.Secret.from_name("spolysis-secrets")
@@ -103,7 +104,7 @@ def run_full_pipeline(
     job_id: str,
     r2_key: str,
     tier: str,
-    reference_motion_dir: str = "data/reference_motion",
+    reference_motion_dir: str = "/opt/reference_motion",
 ) -> dict:
     """
     Run the complete pipeline for a single job on Modal GPU.
@@ -173,7 +174,7 @@ def run_full_pipeline(
                     bboxes[t] = [visible[:, 0].min(), visible[:, 1].min(),
                                  visible[:, 0].max(), visible[:, 1].max()]
 
-        pose2d = Pose2DResult(keypoints=keypoints, bboxes=bboxes)
+        pose2d = Pose2DResult(keypoints=keypoints, bboxes=bboxes, frame_paths=pose_result.frame_paths)
 
         # 3D lifting
         checkpoint = (
@@ -181,13 +182,13 @@ def run_full_pipeline(
             if settings.lift_model == "motionbert"
             else settings.posemamba_checkpoint
         )
-        lift_result = lift_to_3d(pose2d, model=settings.lift_model, checkpoint=checkpoint)
+        lift_result = lift_to_3d(pose2d, model_name=settings.lift_model, checkpoint=checkpoint)
 
         # Smoothing
-        smooth_result = smooth_3d(lift_result, smoothnet_checkpoint=settings.smoothnet_checkpoint)
+        smooth_result = smooth_3d(lift_result.keypoints_3d, smoothnet_checkpoint=settings.smoothnet_checkpoint)
 
         # Normalization
-        normalized = normalize_skeleton(smooth_result)
+        normalized = normalize_skeleton(smooth_result.keypoints_3d)
 
         # Feature extraction + classification for stroke type
         features = extract_features(keypoints)
@@ -197,39 +198,45 @@ def run_full_pipeline(
             classification = ClassificationResult(
                 stroke_type="forehand", fault_label=None, confidence=0.5, method="heuristic"
             )
-            contact_frame = keypoints.shape[0] // 2
         else:
             classification = classify_stroke(
                 segment,
                 stroke_model_path=settings.posec3d_stroke_model,
                 fault_model_path=settings.posec3d_fault_model,
             )
-            contact_frame = segment.contact_frame if hasattr(segment, "contact_frame") else keypoints.shape[0] // 2
 
         stroke_type = classification.stroke_type
         fault_label = classification.fault_label
         confidence = classification.confidence
 
         # Phase detection
-        phases = detect_phases(normalized, stroke_type=stroke_type, contact_frame=contact_frame)
+        phases = detect_phases(normalized.keypoints_3d, stroke_type=stroke_type)
 
         # DTW alignment vs pro reference motion
         alignment = align_to_reference(
-            normalized,
+            normalized.keypoints_3d,
             phases,
             stroke_type=stroke_type,
-            reference_motion_dir=reference_motion_dir,
+            reference_dir=reference_motion_dir,
         )
 
         # Biomechanical delta computation
-        delta_table = compute_deltas(alignment)
+        delta_table = compute_deltas(alignment.user_seq, alignment.ref_seq, phases, stroke_type)
 
         # CCD IK correction (flawed joints only)
-        corrected = apply_ik_correction(normalized, delta_table)
+        corrected = apply_ik_correction(normalized, delta_table, phases)
 
         # Render overlay video onto original frames
         overlay_tmp = tempfile.mktemp(suffix=".mp4", prefix=f"spolysis_overlay_{job_id}_")
-        render_overlay(corrected, frame_dir, output_path=overlay_tmp)
+        render_overlay(
+            frame_paths=pose_result.frame_paths,
+            corrected_3d=corrected.keypoints_3d,
+            original_2d_kps=keypoints,
+            bboxes=bboxes,
+            root_trajectory=normalized.root_trajectory,
+            blend_weights=corrected.blend_weights,
+            output_path=overlay_tmp,
+        )
 
         # Upload overlay video to R2
         overlay_r2_key = f"results/{job_id}/overlay.mp4"
@@ -241,7 +248,7 @@ def run_full_pipeline(
             "job_id": job_id,
             "stroke_type": stroke_type,
             "fps": 30,
-            "frames": corrected.sequence.tolist() if hasattr(corrected.sequence, "tolist") else corrected.sequence,
+            "frames": corrected.keypoints_3d.tolist(),
         })
 
         # Coaching recommendation

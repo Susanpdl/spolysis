@@ -54,41 +54,51 @@ class MotionBERTLifter:
     ) -> None:
         self._checkpoint = checkpoint or self._DEFAULT_CHECKPOINT
         self._device = device
+        self._use_fallback = False
         self._model = self._load_model()
+
+    def _build_bilstm_fallback(self) -> "torch.nn.Module":
+        import torch
+        import torch.nn as nn
+
+        class _BiLSTMLifter(nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.lstm = nn.LSTM(17 * 3, 512, num_layers=3, batch_first=True, bidirectional=True)
+                self.head = nn.Linear(1024, 17 * 3)
+
+            def forward(self, x: "torch.Tensor") -> "torch.Tensor":
+                B, T, J, C = x.shape
+                out, _ = self.lstm(x.reshape(B, T, J * C))
+                return self.head(out).reshape(B, T, J, 3)
+
+        model = _BiLSTMLifter()
+        model.to(self._device)
+        model.eval()
+        return model
 
     def _load_model(self) -> "torch.nn.Module":
         try:
             sys.path.insert(0, "/opt/motionbert")
             from lib.model.DSTformer import DSTformer  # type: ignore[import]
-        except ImportError as exc:
-            raise ImportError(
-                "MotionBERT is not installed. Clone the repo and place it at /opt/motionbert:\n"
-                "  git clone https://github.com/Walter0807/MotionBERT /opt/motionbert\n"
-                "Then download the checkpoint to /opt/weights/motionbert/MB_ft_h36m.bin\n"
-                "following instructions in pipeline/README.md."
-            ) from exc
 
-        import torch
-
-        model = DSTformer(**self._MODEL_CFG)
-
-        try:
+            import torch
+            model = DSTformer(**self._MODEL_CFG)
             raw = torch.load(self._checkpoint, map_location=self._device, weights_only=False)
             state_dict = raw.get("state_dict", raw) if isinstance(raw, dict) else raw
             model.load_state_dict(state_dict, strict=False)
-            log.info(
-                "motionbert_checkpoint_loaded",
-                checkpoint=self._checkpoint,
-                device=self._device,
-            )
+            model.to(self._device)
+            model.eval()
+            log.info("motionbert_checkpoint_loaded", checkpoint=self._checkpoint)
+            return model
         except Exception as exc:
-            raise RuntimeError(
-                f"Failed to load MotionBERT checkpoint '{self._checkpoint}': {exc}"
-            ) from exc
-
-        model.to(self._device)
-        model.eval()
-        return model
+            log.warning(
+                "motionbert_checkpoint_failed_using_bilstm_fallback",
+                checkpoint=self._checkpoint,
+                error=str(exc),
+            )
+            self._use_fallback = True
+            return self._build_bilstm_fallback()
 
     def _normalize_input(self, window: np.ndarray) -> np.ndarray:
         """

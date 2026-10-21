@@ -16,7 +16,9 @@ class ExtractionResult:
     duration_seconds: float
 
 
-def extract_frames(video_path: str, fps: float = 30.0, output_dir: str | None = None) -> ExtractionResult:
+def extract_frames(
+    video_path: str, fps: float = 30.0, output_dir: str | None = None
+) -> ExtractionResult:
     """
     Extract frames from a video file using ffmpeg.
 
@@ -36,28 +38,43 @@ def extract_frames(video_path: str, fps: float = 30.0, output_dir: str | None = 
 
     # Probe video duration and native fps
     probe_cmd = [
-        "ffprobe", "-v", "quiet", "-print_format", "json",
-        "-show_streams", "-select_streams", "v:0", video_path,
+        "ffprobe",
+        "-v",
+        "quiet",
+        "-print_format",
+        "json",
+        "-show_streams",
+        "-select_streams",
+        "v:0",
+        video_path,
     ]
-    probe_result = subprocess.run(probe_cmd, capture_output=True, text=True)
+    probe_result = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=30)
     duration = 0.0
     if probe_result.returncode == 0:
         import json
+
         info = json.loads(probe_result.stdout)
         streams = info.get("streams", [])
         if streams:
             duration = float(streams[0].get("duration", 0))
 
+    if not 1 <= duration <= 300:
+        raise ValueError("Choose a readable video between 1 second and 5 minutes long.")
+
     # Extract at target fps
     cmd = [
-        "ffmpeg", "-i", video_path,
-        "-vf", f"fps={fps}",
-        "-q:v", "2",  # high quality JPEG
+        "ffmpeg",
+        "-i",
+        video_path,
+        "-vf",
+        f"fps={fps},scale=1280:1280:force_original_aspect_ratio=decrease:force_divisible_by=2",
+        "-q:v",
+        "2",  # high quality JPEG
         "-y",
         frame_pattern,
     ]
     log.info("extracting_frames", video=video_path, fps=fps, output=output_dir)
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
     if result.returncode != 0:
         raise RuntimeError(f"ffmpeg frame extraction failed:\n{result.stderr}")
 

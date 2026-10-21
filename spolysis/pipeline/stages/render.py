@@ -11,8 +11,10 @@ import numpy as np
 import structlog
 
 from pipeline.utils.skeleton import (
-    L_SHOULDER, R_SHOULDER,
-    L_HIP, R_HIP,
+    L_SHOULDER,
+    R_SHOULDER,
+    L_HIP,
+    R_HIP,
     SKELETON_EDGES,
 )
 
@@ -73,7 +75,7 @@ def _spine_length_3d(kps_3d: np.ndarray) -> float:
 
 def _project_corrected_to_pixels(
     corrected_3d_frame: np.ndarray,  # (17, 3) root-relative mm
-    original_2d_frame: np.ndarray,   # (17, 3) pixel coords + confidence
+    original_2d_frame: np.ndarray,  # (17, 3) pixel coords + confidence
 ) -> np.ndarray:
     """
     Weak-perspective projection of the corrected 3D skeleton onto 2D pixel coords.
@@ -115,7 +117,7 @@ def _project_corrected_to_pixels(
 
 def _draw_skeleton(
     canvas: np.ndarray,
-    kps_2d: np.ndarray,        # (17, 2) pixel coords
+    kps_2d: np.ndarray,  # (17, 2) pixel coords
     color: tuple[int, int, int],
     alpha: float,
     draw_labels: bool = False,
@@ -191,16 +193,17 @@ def _draw_blend_bar(
 
 def render_overlay(
     frame_paths: list[str],
-    corrected_3d: np.ndarray,           # (T, 17, 3) corrected, mm root-relative
-    original_2d_kps: np.ndarray,        # (T, 17, 3) pixel coords + confidence
-    bboxes: np.ndarray,                 # (T, 4) player bbox, pixel coords (unused by projection but kept for future crop support)
-    root_trajectory: np.ndarray,        # (T, 3) from NormalizedSkeleton
-    blend_weights: np.ndarray,          # (T,) from CorrectedSequence
+    corrected_3d: np.ndarray,  # (T, 17, 3) corrected, mm root-relative
+    original_2d_kps: np.ndarray,  # (T, 17, 3) pixel coords + confidence
+    bboxes: np.ndarray,  # (T, 4) player bbox, pixel coords (unused by projection but kept for future crop support)
+    root_trajectory: np.ndarray,  # (T, 3) from NormalizedSkeleton
+    blend_weights: np.ndarray,  # (T,) from CorrectedSequence
     output_path: str,
     fps: float = 30.0,
     skeleton_color: tuple[int, int, int] = (0, 220, 100),
     original_color: tuple[int, int, int] = (255, 100, 50),
     skeleton_alpha: float = 0.75,
+    original_3d: np.ndarray | None = None,
 ) -> RenderResult:
     """
     Composite the corrected skeleton onto original video frames and encode to H.264.
@@ -266,16 +269,38 @@ def render_overlay(
         for t in range(T_frames):
             img = cv2.imread(frame_paths[t])
             if img is None:
-                log.warning("frame_read_failed_using_blank", frame_index=t, path=frame_paths[t])
+                log.warning(
+                    "frame_read_failed_using_blank", frame_index=t, path=frame_paths[t]
+                )
                 img = np.zeros((height, width, 3), dtype=np.uint8)
 
             w = float(blend_weights[t])
 
             # Project corrected 3D skeleton to pixel space for this frame
-            corrected_2d = _project_corrected_to_pixels(corrected_3d[t], original_2d_kps[t])
+            if original_3d is None:
+                corrected_2d = _project_corrected_to_pixels(
+                    corrected_3d[t], original_2d_kps[t]
+                )
+            else:
+                # Fit weak perspective to the original pose, then project only
+                # the correction delta. Zero correction exactly matches footage.
+                source = original_3d[t, 5:, :2] * [1, -1]
+                target = original_2d_kps[t, 5:, :2]
+                conf = original_2d_kps[t, 5:, 2]
+                valid = conf > 0.3
+                a = source[valid] - source[valid].mean(axis=0)
+                b = target[valid] - target[valid].mean(axis=0)
+                scale = max(0.0, float((a * b).sum() / max((a * a).sum(), 1e-9)))
+                displacement = (corrected_3d[t, :, :2] - original_3d[t, :, :2]) * [
+                    1,
+                    -1,
+                ]
+                corrected_2d = original_2d_kps[t, :, :2] + displacement * scale
 
             # Original skeleton confidence scores (third column of RTMPose output)
-            orig_conf = original_2d_kps[t, :, 2] if original_2d_kps.shape[2] == 3 else None
+            orig_conf = (
+                original_2d_kps[t, :, 2] if original_2d_kps.shape[2] == 3 else None
+            )
 
             # Draw original skeleton where correction is not fully active.
             # Fades out as blend weight increases so the two skeletons don't fight.
@@ -316,12 +341,20 @@ def render_overlay(
         ffmpeg_cmd = [
             "ffmpeg",
             "-y",
-            "-r", str(fps),
-            "-i", os.path.join(frame_dir, "%06d.jpg"),
-            "-c:v", "libx264",
-            "-preset", "fast",
-            "-crf", "20",
-            "-pix_fmt", "yuv420p",
+            "-r",
+            str(fps),
+            "-i",
+            os.path.join(frame_dir, "%06d.jpg"),
+            "-c:v",
+            "libx264",
+            "-preset",
+            "fast",
+            "-crf",
+            "20",
+            "-pix_fmt",
+            "yuv420p",
+            "-movflags",
+            "+faststart",
             output_path,
         ]
 
@@ -339,8 +372,7 @@ def render_overlay(
                 stderr=proc.stderr,
             )
             raise RuntimeError(
-                f"ffmpeg exited with code {proc.returncode}.\n"
-                f"stderr: {proc.stderr}"
+                f"ffmpeg exited with code {proc.returncode}.\nstderr: {proc.stderr}"
             )
 
     if not os.path.exists(output_path):
@@ -420,7 +452,8 @@ if __name__ == "__main__":
     # matches the original extraction order from ffmpeg.
     supported_exts = {".jpg", ".jpeg", ".png"}
     all_files = sorted(
-        f for f in os.listdir(args.frame_dir)
+        f
+        for f in os.listdir(args.frame_dir)
         if os.path.splitext(f)[1].lower() in supported_exts
     )
     if not all_files:

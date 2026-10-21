@@ -24,20 +24,20 @@ _DTW_BAND_MAX = 30
 
 @dataclass
 class AlignmentResult:
-    user_seq: np.ndarray    # (T_aligned, 17, 3) user sequence, unchanged
-    ref_seq: np.ndarray     # (T_aligned, 17, 3) reference warped to user timing
+    user_seq: np.ndarray  # (T_aligned, 17, 3) user sequence, unchanged
+    ref_seq: np.ndarray  # (T_aligned, 17, 3) reference warped to user timing
     dtw_cost: float
-    user_contact: int       # contact frame in the aligned sequence
-    ref_contact: int        # contact frame in the original reference
+    user_contact: int  # contact frame in the aligned sequence
+    ref_contact: int  # contact frame in the original reference
 
 
 def _wrist_speed(keypoints_3d: np.ndarray) -> np.ndarray:
     """Compute right-wrist 3D speed, returns (T-1,) array."""
     from scipy.signal import savgol_filter
 
-    wrist_pos = keypoints_3d[:, _R_WRIST, :]   # (T, 3)
-    diff = np.diff(wrist_pos, axis=0)           # (T-1, 3)
-    speed = np.linalg.norm(diff, axis=1)        # (T-1,)
+    wrist_pos = keypoints_3d[:, _R_WRIST, :]  # (T, 3)
+    diff = np.diff(wrist_pos, axis=0)  # (T-1, 3)
+    speed = np.linalg.norm(diff, axis=1)  # (T-1,)
 
     T = len(speed)
     if T < 4:
@@ -106,7 +106,7 @@ def _select_reference(
 
 def _dtw_warp_ref_to_user(
     user_side: np.ndarray,  # (T_u, 17, 3)
-    ref_side: np.ndarray,   # (T_r, 17, 3)
+    ref_side: np.ndarray,  # (T_r, 17, 3)
 ) -> np.ndarray:
     """
     DTW-align ref_side to user_side and return a warped reference of length T_u.
@@ -120,7 +120,7 @@ def _dtw_warp_ref_to_user(
     single frame for half the sequence) while still handling natural swing
     speed variation between user and pro.
     """
-    from dtaidistance import dtw as dtaidtw
+    from dtaidistance import dtw_ndim as dtaidtw
 
     T_u = user_side.shape[0]
     T_r = ref_side.shape[0]
@@ -131,22 +131,18 @@ def _dtw_warp_ref_to_user(
 
     radius = min(_DTW_BAND_MAX, max(1, int(min(T_u, T_r) * _DTW_BAND_FRACTION)))
 
-    user_flat = user_side.reshape(T_u, -1).astype(np.double)  # (T_u, 51)
-    ref_flat = ref_side.reshape(T_r, -1).astype(np.double)    # (T_r, 51)
+    from pipeline.stages.delta import _compute_angles
 
-    # dtaidistance expects 1D series; we compute the Euclidean norm per frame
-    # as a 1D distance proxy for the path computation, then apply the path to
-    # the full 3D sequence for interpolation.
-    user_1d = np.linalg.norm(user_flat, axis=1)
-    ref_1d = np.linalg.norm(ref_flat, axis=1)
+    def features(sequence):
+        # Joint angles are invariant to body size and camera heading.
+        return np.asarray(
+            [list(_compute_angles(frame, "serve").values()) for frame in sequence],
+            dtype=np.double,
+        )
 
-    try:
-        path = dtaidtw.warping_path(user_1d, ref_1d, window=radius)
-    except Exception as exc:
-        log.warning("dtw_failed_using_linear_resampling", error=str(exc))
-        # Fall back to linear resampling if dtaidistance is unavailable
-        interp_indices = np.linspace(0, T_r - 1, T_u)
-        return _interp_ref(ref_side, interp_indices)
+    path = dtaidtw.warping_path(features(user_side), features(ref_side), window=radius)
+    if not path:
+        raise ValueError("Reference alignment failed")
 
     # Build a mapping from each user frame to one or more reference frames.
     # When multiple reference frames map to the same user frame, average them.
@@ -227,14 +223,14 @@ def align_to_reference(
 
     # Resolve reference files matching this stroke type
     if not os.path.isdir(reference_dir):
-        raise FileNotFoundError(
-            f"Reference directory not found: {reference_dir}"
-        )
+        raise FileNotFoundError(f"Reference directory not found: {reference_dir}")
 
     ref_paths = [
         os.path.join(reference_dir, f)
         for f in os.listdir(reference_dir)
-        if f.endswith(".npy") and stroke_type.lower() in f.lower()
+        if f.endswith(".npy")
+        and stroke_type.lower() in f.lower()
+        and (stroke_type != "serve" or "Remate" not in f)
     ]
 
     if not ref_paths:
@@ -245,6 +241,11 @@ def align_to_reference(
     user_contact_ratio = user_contact / max(T_user - 1, 1)
     ref_seq, ref_contact = _select_reference(ref_paths, user_contact_ratio)
 
+    # Reference recordings may contain multiple strokes. Compare one swing.
+    lo, hi = max(0, ref_contact - 45), min(len(ref_seq), ref_contact + 46)
+    ref_seq = ref_seq[lo:hi].copy()
+    ref_contact -= lo
+    ref_seq -= (ref_seq[:, 11:12] + ref_seq[:, 12:13]) / 2
     T_ref = ref_seq.shape[0]
     log.info(
         "reference_selected",
@@ -253,14 +254,16 @@ def align_to_reference(
         num_candidates=len(ref_paths),
     )
 
+    ref_contact = min(T_ref - 2, max(1, ref_contact))
+
     # Split at contact frames
-    user_pre = user_3d[: user_contact]           # [0, contact)
-    user_post = user_3d[user_contact:]            # [contact, T_user]
-    ref_pre = ref_seq[: ref_contact]
+    user_pre = user_3d[:user_contact]  # [0, contact)
+    user_post = user_3d[user_contact:]  # [contact, T_user]
+    ref_pre = ref_seq[:ref_contact]
     ref_post = ref_seq[ref_contact:]
 
     # DTW-warp each side of the reference to match user timing
-    warped_pre = _dtw_warp_ref_to_user(user_pre, ref_pre)    # (len(user_pre), 17, 3)
+    warped_pre = _dtw_warp_ref_to_user(user_pre, ref_pre)  # (len(user_pre), 17, 3)
     warped_post = _dtw_warp_ref_to_user(user_post, ref_post)  # (len(user_post), 17, 3)
 
     ref_warped = np.concatenate([warped_pre, warped_post], axis=0)  # (T_user, 17, 3)

@@ -36,7 +36,9 @@ async def signup(body: SignupRequest):
 async def login(body: LoginRequest):
     client = get_supabase_client()
     try:
-        result = client.auth.sign_in_with_password({"email": body.email, "password": body.password})
+        result = client.auth.sign_in_with_password(
+            {"email": body.email, "password": body.password}
+        )
         return {
             "access_token": result.session.access_token,
             "user": {"id": result.user.id, "email": result.user.email},

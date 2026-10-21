@@ -2,7 +2,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from api.auth import get_current_user
 from api.models.job import UploadUrlRequest, UploadUrlResponse
-from api.r2 import generate_upload_url
+from api.r2 import generate_upload_url, verify_upload
 from api.database import service_client
 from api.temporal_client import start_analysis_workflow
 import uuid
@@ -11,7 +11,9 @@ router = APIRouter(prefix="/uploads", tags=["uploads"])
 
 
 @router.post("/url", response_model=UploadUrlResponse, status_code=201)
-async def get_upload_url(body: UploadUrlRequest, user: dict = Depends(get_current_user)):
+async def get_upload_url(
+    body: UploadUrlRequest, user: dict = Depends(get_current_user)
+):
     """
     Create a job record and return a presigned R2 upload URL.
     The client uploads directly to R2, then calls POST /uploads/{job_id}/confirm.
@@ -21,17 +23,23 @@ async def get_upload_url(body: UploadUrlRequest, user: dict = Depends(get_curren
     r2_key = f"raw/{job_id}/video.mp4"
 
     try:
-        service_client.table("jobs").insert({
-            "id": job_id,
-            "user_id": user["user_id"],
-            "tier": body.tier,
-            "status": "pending",
-            "video_r2_key": r2_key,
-        }).execute()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create job: {e}")
+        service_client.table("jobs").insert(
+            {
+                "id": job_id,
+                "user_id": user["user_id"],
+                "tier": "premium",
+                "stroke_type": body.stroke_type,
+                "handedness": body.handedness,
+                "status": "pending",
+                "video_r2_key": r2_key,
+            }
+        ).execute()
+    except Exception:
+        raise HTTPException(
+            status_code=500, detail="Could not create analysis. Please try again."
+        )
 
-    upload_url = generate_upload_url(r2_key)
+    upload_url = generate_upload_url(r2_key, body.content_type)
     return UploadUrlResponse(upload_url=upload_url, r2_key=r2_key, job_id=job_id)
 
 
@@ -43,26 +51,38 @@ async def confirm_upload(job_id: str, user: dict = Depends(get_current_user)):
     """
     result = (
         service_client.table("jobs")
-        .select("id, tier, video_r2_key, status")
+        .select("id, tier, video_r2_key, status, stroke_type, handedness")
         .eq("id", job_id)
         .eq("user_id", user["user_id"])
-        .single()
         .execute()
     )
     if not result.data:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    job = result.data
+    job = result.data[0]
     if job["status"] != "pending":
-        raise HTTPException(status_code=400, detail=f"Job already in status '{job['status']}'")
+        return {"status": job["status"]}
 
     try:
-        workflow_id = await start_analysis_workflow(job_id, job["video_r2_key"], job["tier"])
-        service_client.table("jobs").update({"temporal_run_id": workflow_id}).eq("id", job_id).execute()
-    except Exception as e:
-        service_client.table("jobs").update(
-            {"status": "failed", "error_message": str(e)}
-        ).eq("id", job_id).execute()
+        verify_upload(job["video_r2_key"])
+    except Exception:
+        raise HTTPException(
+            status_code=400,
+            detail="Video upload is missing or invalid. Upload an MP4 or MOV under 500 MB.",
+        )
+
+    try:
+        workflow_id = await start_analysis_workflow(
+            job_id,
+            job["video_r2_key"],
+            "premium",
+            job["stroke_type"],
+            job["handedness"],
+        )
+        service_client.table("jobs").update({"temporal_run_id": workflow_id}).eq(
+            "id", job_id
+        ).execute()
+    except Exception:
         raise HTTPException(status_code=500, detail="Failed to start analysis workflow")
 
     return {"status": "ok"}

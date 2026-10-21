@@ -4,7 +4,7 @@ from api.auth import get_current_user
 from api.models.job import JobResponse, JobListResponse
 from api.models.result import ResultResponse
 from api.database import service_client
-from api.redis_client import get_cached_job_status, cache_job_status
+from api.redis_client import cache_job_status
 from datetime import datetime
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -38,27 +38,24 @@ async def list_jobs(
         .execute()
     )
     jobs = [_parse_job(r) for r in result.data]
-    return JobListResponse(jobs=jobs, total=result.count or 0, page=page, page_size=page_size)
+    return JobListResponse(
+        jobs=jobs, total=result.count or 0, page=page, page_size=page_size
+    )
 
 
 @router.get("/{job_id}", response_model=JobResponse)
 async def get_job(job_id: str, user: dict = Depends(get_current_user)):
-    cached = get_cached_job_status(job_id)
-    if cached:
-        return JobResponse(**cached)
-
     result = (
         service_client.table("jobs")
         .select("*")
         .eq("id", job_id)
         .eq("user_id", user["user_id"])
-        .single()
         .execute()
     )
     if not result.data:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    job = _parse_job(result.data)
+    job = _parse_job(result.data[0])
     cache_job_status(job_id, job.model_dump(mode="json"))
     return job
 
@@ -70,28 +67,30 @@ async def get_job_result(job_id: str, user: dict = Depends(get_current_user)):
         .select("id, status")
         .eq("id", job_id)
         .eq("user_id", user["user_id"])
-        .single()
         .execute()
     )
     if not job_result.data:
         raise HTTPException(status_code=404, detail="Job not found")
-    if job_result.data["status"] != "completed":
+    if job_result.data[0]["status"] != "completed":
         raise HTTPException(
             status_code=400,
-            detail=f"Job is not completed (status: {job_result.data['status']})",
+            detail=f"Job is not completed (status: {job_result.data[0]['status']})",
         )
 
-    result = (
-        service_client.table("results")
-        .select("*")
-        .eq("job_id", job_id)
-        .single()
-        .execute()
-    )
+    result = service_client.table("results").select("*").eq("job_id", job_id).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Result not found")
 
-    r = result.data
+    r = result.data[0]
+    from api.r2 import generate_download_url
+
+    # Return short-lived authenticated links, never public links to user footage.
+    if r.get("overlay_video_url"):
+        r["overlay_video_url"] = generate_download_url(f"results/{job_id}/overlay.mp4")
+    if r.get("skeleton_3d_url"):
+        r["skeleton_3d_url"] = generate_download_url(
+            f"results/{job_id}/skeleton_3d.json"
+        )
     return ResultResponse(
         job_id=r["job_id"],
         stroke_type=r["stroke_type"],

@@ -1,0 +1,11 @@
+node_modules/
+.expo/
+.eas/
+/ios/
+/android/
+/e2e/
+/src/generated/
+*.log
+.env.*
+# app/.env contains only EXPO_PUBLIC_* client configuration.
+# Server credentials are outside this app directory and must never be added here.

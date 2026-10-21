@@ -1,122 +1,97 @@
-import React from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  SafeAreaView,
-  TouchableOpacity,
-  Alert,
-} from 'react-native';
-import { authStore } from '@/store/authStore';
-import { authService } from '@/services/auth';
-import { useSubscription } from '@/hooks/useSubscription';
-import { Button } from '@/components/Button';
-import { colors, typography, spacing } from '@/theme';
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.row}>
-      <Text style={[typography.caption, styles.rowLabel]}>{label}</Text>
-      <Text style={[typography.body, styles.rowValue]}>{value}</Text>
-    </View>
-  );
-}
-
+import React from "react";
+import { View, Text, StyleSheet, Alert, ScrollView } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useQueryClient } from "@tanstack/react-query";
+import { authStore } from "@/store/authStore";
+import { authService } from "@/services/auth";
+import { Button } from "@/components/Button";
+import { colors } from "@/theme";
 export default function ProfileScreen() {
   const user = authStore((s) => s.user);
-  const { isPremium, restorePurchases } = useSubscription();
-
-  const handleLogout = () => {
-    Alert.alert('Sign out', 'Are you sure?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign out',
-        style: 'destructive',
-        onPress: async () => {
-          await authService.signOut();
-        },
-      },
-    ]);
-  };
-
-  const handleRestore = async () => {
+  const queries = useQueryClient();
+  const logout = async () => {
     try {
-      await restorePurchases();
-      Alert.alert('Purchases restored', isPremium ? 'Premium is active.' : 'No active purchases found.');
+      const { error } = await authService.signOut();
+      if (error) throw error;
+      queries.clear();
     } catch {
-      Alert.alert('Restore failed', 'Could not restore purchases. Try again later.');
+      Alert.alert(
+        "Could not sign out",
+        "Please check your connection and try again.",
+      );
     }
   };
-
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.inner}>
-        <View style={styles.header}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{(user?.email?.[0] ?? '?').toUpperCase()}</Text>
-          </View>
-          <Text style={[typography.h3, { color: colors.text.primary }]}>
-            {user?.email ?? 'Unknown'}
+    <SafeAreaView style={styles.page}>
+      <ScrollView contentContainerStyle={styles.content}>
+        <Text style={styles.title}>Your account</Text>
+        <View style={styles.avatar}>
+          <Text style={styles.initial}>
+            {user?.email?.[0]?.toUpperCase() ?? "S"}
           </Text>
         </View>
-
+        <Text style={styles.email}>{user?.email}</Text>
         <View style={styles.card}>
-          <Row label="Account" value={user?.email ?? '-'} />
-          <View style={styles.divider} />
-          <Row label="Subscription" value={isPremium ? 'Premium - 3D analysis' : 'Free - 2D analysis'} />
+          <Text style={styles.heading}>3D stroke analysis</Text>
+          <Text style={styles.text}>
+            Review your motion, compare joint angles and explore a suggested
+            correction on your own recording.
+          </Text>
         </View>
-
-        <View style={styles.actions}>
-          {!isPremium && (
-            <TouchableOpacity style={styles.upgradeBtn}>
-              <Text style={styles.upgradeBtnText}>Upgrade to Premium</Text>
-            </TouchableOpacity>
-          )}
-          <Button label="Restore purchases" variant="outline" onPress={handleRestore} />
-          <Button label="Sign out" variant="outline" onPress={handleLogout} style={styles.signOutBtn} />
+        <View style={styles.card}>
+          <Text style={styles.heading}>Private by default</Text>
+          <Text style={styles.text}>
+            Your recordings and results are accessible through your account.
+            Sharing exports a video only when you choose to share it.
+          </Text>
         </View>
-      </View>
+        <View style={styles.card}>
+          <Text style={styles.heading}>About the reference motion</Text>
+          <Text style={styles.text}>
+            Reference motion comes from the Tennis-MoCap research dataset,
+            provided under CC BY-SA 3.0. Comparisons use regional
+            high-performance players. Single-camera 3D estimates are a practice
+            aid, not precise measurements.
+          </Text>
+        </View>
+        <Button
+          title="Sign out"
+          variant="secondary"
+          onPress={() =>
+            Alert.alert(
+              "Sign out?",
+              "Your completed analyses will remain in your account.",
+              [
+                { text: "Cancel", style: "cancel" },
+                { text: "Sign out", onPress: logout },
+              ],
+            )
+          }
+        />
+      </ScrollView>
     </SafeAreaView>
   );
 }
-
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  inner: { flex: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.lg },
-  header: { alignItems: 'center', gap: spacing.md, marginBottom: spacing.xl },
+  page: { flex: 1, backgroundColor: colors.background },
+  content: { padding: 24, gap: 20 },
+  title: { fontSize: 28, fontWeight: "700", color: colors.text.primary },
   avatar: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 64,
+    height: 64,
+    borderRadius: 20,
     backgroundColor: colors.primaryMuted,
-    borderWidth: 2,
-    borderColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
-  avatarText: { fontSize: 28, fontWeight: '700', color: colors.primary },
+  initial: { fontSize: 28, color: colors.primary, fontWeight: "700" },
+  email: { color: colors.text.primary, fontSize: 16 },
   card: {
+    padding: 18,
+    borderRadius: 16,
     backgroundColor: colors.surface,
-    borderRadius: 14,
-    padding: spacing.md,
-    marginBottom: spacing.lg,
+    gap: 8,
   },
-  row: { paddingVertical: spacing.sm },
-  rowLabel: { color: colors.text.muted, marginBottom: 2 },
-  rowValue: { color: colors.text.primary },
-  divider: { height: 1, backgroundColor: colors.border },
-  actions: { gap: spacing.sm },
-  upgradeBtn: {
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  upgradeBtnText: {
-    color: colors.text.inverse,
-    fontWeight: '700',
-    fontSize: 16,
-    letterSpacing: 0.2,
-  },
-  signOutBtn: { borderColor: colors.error },
+  heading: { color: colors.text.primary, fontWeight: "600", fontSize: 16 },
+  text: { color: colors.text.secondary, lineHeight: 21, fontSize: 14 },
 });

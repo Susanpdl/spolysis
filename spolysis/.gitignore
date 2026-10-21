@@ -71,3 +71,10 @@ logs/
 
 # Temporal
 temporal-data/
+
+# Authored native pose plugin (not Expo-generated platform projects)
+!app/modules/spolysis-pose/ios/
+!app/modules/spolysis-pose/ios/**
+!app/modules/spolysis-pose/android/
+!app/modules/spolysis-pose/android/**
+app/src/generated/

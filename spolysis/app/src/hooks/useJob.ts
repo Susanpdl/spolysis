@@ -1,23 +1,26 @@
-import { useQuery } from '@tanstack/react-query';
-import { api, Job, Result } from '@/services/api';
+import { useQuery } from "@tanstack/react-query";
+import { authStore } from "@/store/authStore";
+import { api, Job, Result } from "@/services/api";
 
 export function useJob(jobId: string | null) {
+  const userId = authStore((s) => s.user?.id);
   const jobQuery = useQuery<Job>({
-    queryKey: ['job', jobId],
+    queryKey: ["job", userId, jobId],
     queryFn: () => api.jobs.get(jobId!),
     enabled: !!jobId,
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      if (status === 'pending' || status === 'processing') return 2000;
+      if (!status || status === "pending" || status === "processing")
+        return 2000;
       return false;
     },
     staleTime: 1000,
   });
 
   const resultQuery = useQuery<Result>({
-    queryKey: ['job-result', jobId],
+    queryKey: ["job-result", userId, jobId],
     queryFn: () => api.jobs.getResult(jobId!),
-    enabled: !!jobId && jobQuery.data?.status === 'completed',
+    enabled: !!jobId && jobQuery.data?.status === "completed",
   });
 
   return {
@@ -27,5 +30,9 @@ export function useJob(jobId: string | null) {
     isLoadingResult: resultQuery.isLoading,
     jobError: jobQuery.error,
     resultError: resultQuery.error,
+    refetch: async () => {
+      await jobQuery.refetch();
+      await resultQuery.refetch();
+    },
   };
 }

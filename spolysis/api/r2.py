@@ -20,7 +20,9 @@ def get_r2_client():
     return _client
 
 
-def generate_upload_url(r2_key: str, content_type: str = "video/mp4", expires_in: int = 300) -> str:
+def generate_upload_url(
+    r2_key: str, content_type: str = "video/mp4", expires_in: int = 300
+) -> str:
     client = get_r2_client()
     url = client.generate_presigned_url(
         "put_object",
@@ -34,5 +36,17 @@ def generate_upload_url(r2_key: str, content_type: str = "video/mp4", expires_in
     return url
 
 
-def get_public_url(r2_key: str) -> str:
-    return f"{settings.r2_public_url.rstrip('/')}/{r2_key}"
+def generate_download_url(r2_key: str) -> str:
+    return get_r2_client().generate_presigned_url(
+        "get_object",
+        Params={"Bucket": settings.r2_bucket_name, "Key": r2_key},
+        ExpiresIn=3600,
+    )
+
+
+def verify_upload(r2_key: str) -> None:
+    obj = get_r2_client().head_object(Bucket=settings.r2_bucket_name, Key=r2_key)
+    if not 0 < obj["ContentLength"] <= 500 * 1024 * 1024:
+        raise ValueError("Video must be between 1 byte and 500 MB.")
+    if obj.get("ContentType") not in {"video/mp4", "video/quicktime"}:
+        raise ValueError("Upload an MP4 or MOV video.")

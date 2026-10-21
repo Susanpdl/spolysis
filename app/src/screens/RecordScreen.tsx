@@ -1,333 +1,372 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  Dimensions,
   Alert,
-} from 'react-native';
+  Linking,
+  AppState,
+  ScrollView,
+} from "react-native";
 import {
   Camera,
   useCameraDevice,
   useCameraPermission,
-} from 'react-native-vision-camera';
-import { RecordingScreenProps } from '@/navigation/types';
-import { BodyOutline } from '@/components/BodyOutline';
-import { usePoseValidation } from '@/hooks/usePoseValidation';
-import { recordingStore } from '@/store/recordingStore';
-import { colors, typography, spacing } from '@/theme';
+} from "react-native-vision-camera";
+import { useIsFocused } from "@react-navigation/native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import * as ImagePicker from "expo-image-picker";
+import { RecordingScreenProps } from "@/navigation/types";
+import { BodyOutline } from "@/components/BodyOutline";
+import { Button } from "@/components/Button";
+import { useLivePose } from "@/hooks/useLivePose";
+import { usePoseValidation } from "@/hooks/usePoseValidation";
+import { StrokeType } from "@/services/api";
+import { colors, spacing } from "@/theme";
 
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
-const OUTLINE_W = SCREEN_W * 0.55;
-const OUTLINE_H = SCREEN_H * 0.72;
-const MAX_DURATION_SEC = 300; // 5 min
-
-type RecordingPhase = 'preview' | 'countdown' | 'recording' | 'stopping';
-
-function useCountdown(from: number, onDone: () => void) {
-  const [count, setCount] = useState(from);
-  const active = useRef(false);
-
-  const start = useCallback(() => {
-    active.current = true;
-    setCount(from);
-  }, [from]);
-
+type Phase = "preview" | "countdown" | "recording" | "stopping";
+export default function RecordScreen({
+  navigation,
+}: RecordingScreenProps<"Capture">) {
+  const { hasPermission, requestPermission } = useCameraPermission();
+  const device = useCameraDevice("back");
+  const focused = useIsFocused();
+  const camera = useRef<Camera>(null);
+  const [phase, setPhase] = useState<Phase>("preview");
+  const phaseRef = useRef<Phase>("preview");
+  const [seconds, setSeconds] = useState(0);
+  const [count, setCount] = useState(3);
+  const [strokeType, setStroke] = useState<StrokeType>("forehand");
+  const [handedness, setHand] = useState<"right" | "left">("right");
+  const [active, setActive] = useState(true);
+  const [initialized, setInitialized] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const { frameProcessor, pose, available } = useLivePose(
+    focused && phase === "preview",
+  );
+  const validation = usePoseValidation(pose);
+  const setRecordingPhase = useCallback((next: Phase) => {
+    phaseRef.current = next;
+    setPhase(next);
+  }, []);
+  const stop = useCallback(async () => {
+    if (phaseRef.current !== "recording") return;
+    setRecordingPhase("stopping");
+    try {
+      await camera.current?.stopRecording();
+    } catch {
+      setRecordingPhase("preview");
+      Alert.alert("Recording stopped", "Please record your stroke again.");
+    }
+  }, [setRecordingPhase]);
   useEffect(() => {
-    if (!active.current || count <= 0) {
-      if (count <= 0 && active.current) {
-        active.current = false;
-        onDone();
+    const sub = AppState.addEventListener("change", (state) => {
+      setActive(state === "active");
+      if (state !== "active") {
+        if (phaseRef.current === "recording") void stop();
+        else setRecordingPhase("preview");
       }
+    });
+    return () => sub.remove();
+  }, [stop, setRecordingPhase]);
+  useEffect(() => {
+    if (!focused) {
+      if (phaseRef.current === "recording") void stop();
+      else setRecordingPhase("preview");
+    }
+  }, [focused, stop, setRecordingPhase]);
+  useEffect(() => {
+    if (phase !== "countdown") return;
+    if (count > 0) {
+      const timer = setTimeout(() => setCount((c) => c - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+    if (!camera.current || !focused || !active) {
+      setRecordingPhase("preview");
       return;
     }
-    const t = setTimeout(() => setCount((c) => c - 1), 1000);
-    return () => clearTimeout(t);
-  }, [count, onDone]);
-
-  return { count, start };
-}
-
-export default function RecordScreen({ navigation }: RecordingScreenProps<'Record'>) {
-  const { hasPermission, requestPermission } = useCameraPermission();
-  const device = useCameraDevice('back');
-  const cameraRef = useRef<Camera>(null);
-
-  const [phase, setPhase] = useState<RecordingPhase>('preview');
-  const [elapsedSec, setElapsedSec] = useState(0);
-
-  // ML Kit pose detection stubbed out for Phase 1 - always "ready" so recording works E2E.
-  // Re-enable once the correct react-native-mlkit package is confirmed.
-  const mockReadyPose = Array.from({ length: 17 }, (_, i) => ({
-    x: i === 5 || i === 11 ? 0.35 : i === 6 || i === 12 ? 0.65 : 0.5,
-    y: 0.5,
-    score: 1.0,
-  }));
-  const { isValid, instructionText } = usePoseValidation(mockReadyPose);
-  const { setVideoUri } = recordingStore();
-
-  const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const startRecording = useCallback(async () => {
-    if (!cameraRef.current) return;
-    setPhase('recording');
-    setElapsedSec(0);
-
-    elapsedRef.current = setInterval(() => {
-      setElapsedSec((s) => {
-        if (s + 1 >= MAX_DURATION_SEC) {
-          stopRecording();
-        }
-        return s + 1;
+    setSeconds(0);
+    setRecordingPhase("recording");
+    try {
+      camera.current.startRecording({
+        fileType: "mp4",
+        onRecordingFinished: (video) => {
+          setRecordingPhase("preview");
+          navigation.navigate("UploadProgress", {
+            videoUri: `file://${video.path}`,
+            strokeType,
+            handedness,
+            contentType: "video/mp4",
+          });
+        },
+        onRecordingError: (error) => {
+          setRecordingPhase("preview");
+          Alert.alert("Recording failed", error.message);
+        },
       });
-    }, 1000);
-
-    cameraRef.current.startRecording({
-      fileType: 'mp4',
-      onRecordingFinished: (video) => {
-        setVideoUri(video.path);
-        navigation.navigate('UploadProgress', { videoUri: video.path });
-      },
-      onRecordingError: (err) => {
-        setPhase('preview');
-        Alert.alert('Recording failed', err.message);
-      },
-    });
-  }, [navigation, setVideoUri]);
-
-  const stopRecording = useCallback(async () => {
-    if (elapsedRef.current) {
-      clearInterval(elapsedRef.current);
-      elapsedRef.current = null;
+    } catch {
+      setRecordingPhase("preview");
+      Alert.alert("Recording failed", "Please try again.");
     }
-    setPhase('stopping');
-    await cameraRef.current?.stopRecording();
-  }, []);
-
-  const { count, start: startCountdown } = useCountdown(3, startRecording);
-
-  const handleRecordPress = () => {
-    if (phase === 'preview') {
-      if (!isValid) {
-        Alert.alert('Not ready', instructionText);
+  }, [
+    phase,
+    count,
+    focused,
+    active,
+    strokeType,
+    handedness,
+    navigation,
+    setRecordingPhase,
+  ]);
+  useEffect(() => {
+    if (phase !== "recording") return;
+    const timer = setInterval(() => setSeconds((s) => s + 1), 1000);
+    return () => clearInterval(timer);
+  }, [phase]);
+  useEffect(() => {
+    if (seconds >= 300 && phase === "recording") void stop();
+  }, [seconds, phase, stop]);
+  useEffect(
+    () => () => {
+      if (phaseRef.current === "recording")
+        void camera.current?.cancelRecording();
+    },
+    [],
+  );
+  const importVideo = async () => {
+    try {
+      const permission =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert(
+          "Photo access needed",
+          "Allow photo access in Settings to choose a video.",
+        );
         return;
       }
-      setPhase('countdown');
-      startCountdown();
-    } else if (phase === 'recording') {
-      stopRecording();
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["videos"],
+        allowsEditing: false,
+        videoMaxDuration: 300,
+      });
+      if (result.canceled) return;
+      const asset = result.assets[0];
+      if (
+        asset.duration &&
+        (asset.duration > 300000 || asset.duration < 1000)
+      ) {
+        Alert.alert(
+          "Choose a shorter clip",
+          "Videos must be between 1 second and 5 minutes.",
+        );
+        return;
+      }
+      if (asset.fileSize && asset.fileSize > 500 * 1024 * 1024) {
+        Alert.alert("Video is too large", "Choose a video under 500 MB.");
+        return;
+      }
+      navigation.navigate("UploadProgress", {
+        videoUri: asset.uri,
+        strokeType,
+        handedness,
+        contentType:
+          asset.mimeType === "video/quicktime"
+            ? "video/quicktime"
+            : "video/mp4",
+      });
+    } catch {
+      Alert.alert("Could not open video", "Please try again.");
     }
   };
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (elapsedRef.current) clearInterval(elapsedRef.current);
-    };
-  }, []);
-
-  // Permission gate
-  useEffect(() => {
-    if (!hasPermission) requestPermission();
-  }, [hasPermission, requestPermission]);
-
-  const formatElapsed = (s: number) => {
-    const m = Math.floor(s / 60).toString().padStart(2, '0');
-    const sec = (s % 60).toString().padStart(2, '0');
-    return `${m}:${sec}`;
-  };
-
-  if (!hasPermission) {
-    return (
-      <View style={styles.permissionContainer}>
-        <Text style={[typography.body, { color: colors.text.secondary, textAlign: 'center' }]}>
-          Camera access is required to record your stroke.
-        </Text>
-        <TouchableOpacity onPress={requestPermission} style={styles.permissionBtn}>
-          <Text style={{ color: colors.primary, fontWeight: '600' }}>Grant access</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  if (!device) {
-    return (
-      <View style={styles.permissionContainer}>
-        <Text style={[typography.body, { color: colors.text.secondary }]}>No camera found.</Text>
-      </View>
-    );
-  }
-
-  const isRecording = phase === 'recording';
-  const isCountdown = phase === 'countdown';
-
+  const ready = initialized && validation.isValid && available;
+  const cameraVisible = hasPermission && !!device && !cameraError;
   return (
-    <View style={styles.container}>
-      <Camera
-        ref={cameraRef}
-        style={StyleSheet.absoluteFill}
-        device={device}
-        isActive
-        video
-        audio={false}
-      />
-
-      {/* Body outline overlay */}
-      <View style={styles.outlineWrap} pointerEvents="none">
-        <BodyOutline width={OUTLINE_W} height={OUTLINE_H} valid={isValid} />
-      </View>
-
-      {/* Top bar */}
-      <View style={styles.topBar}>
-        {isRecording ? (
-          <View style={styles.recIndicator}>
-            <View style={styles.recDot} />
-            <Text style={styles.recTimer}>{formatElapsed(elapsedSec)}</Text>
-          </View>
-        ) : (
-          <View style={styles.instructionPill}>
-            <Text style={styles.instructionText} numberOfLines={1}>
-              {isCountdown ? `Starting in ${count}...` : instructionText}
-            </Text>
-          </View>
-        )}
-      </View>
-
-      {/* Bottom controls */}
-      <View style={styles.bottomBar}>
-        {!isRecording && !isCountdown && (
-          <Text style={[typography.caption, styles.hint]}>
-            Stand side-on, full body visible.
-            {'\n'}Max 5 minutes.
-          </Text>
-        )}
-        <TouchableOpacity
-          style={[
-            styles.recordBtn,
-            isRecording && styles.recordBtnStop,
-            isCountdown && styles.recordBtnDisabled,
-          ]}
-          onPress={handleRecordPress}
-          disabled={isCountdown || phase === 'stopping'}
-          activeOpacity={0.8}
-        >
-          {isRecording ? (
-            <View style={styles.stopSquare} />
-          ) : (
-            <View style={[styles.recordCircle, isValid && styles.recordCircleReady]} />
+    <SafeAreaView style={styles.page}>
+      <ScrollView contentContainerStyle={styles.content}>
+        <Text style={styles.title}>Your next better stroke</Text>
+        <Text style={styles.subtitle}>
+          Record one clear swing. Review your motion in 3D.
+        </Text>
+        <View style={styles.options}>
+          {(["forehand", "backhand", "serve", "volley"] as StrokeType[]).map(
+            (stroke) => (
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityState={{
+                  selected: strokeType === stroke,
+                  disabled: phase !== "preview",
+                }}
+                disabled={phase !== "preview"}
+                key={stroke}
+                onPress={() => setStroke(stroke)}
+                style={[
+                  styles.choice,
+                  strokeType === stroke && styles.selected,
+                ]}
+              >
+                <Text style={styles.choiceText}>
+                  {stroke[0].toUpperCase() + stroke.slice(1)}
+                </Text>
+              </TouchableOpacity>
+            ),
           )}
-        </TouchableOpacity>
-      </View>
-    </View>
+        </View>
+        <View style={styles.options}>
+          {(["right", "left"] as const).map((hand) => (
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityState={{ selected: handedness === hand }}
+              disabled={phase !== "preview"}
+              key={hand}
+              style={[styles.choice, handedness === hand && styles.selected]}
+              onPress={() => setHand(hand)}
+            >
+              <Text style={styles.choiceText}>
+                {hand === "right" ? "Right-handed" : "Left-handed"}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <View style={[styles.preview, !cameraVisible && styles.previewEmpty]}>
+          {cameraVisible ? (
+            <>
+              <Camera
+                ref={camera}
+                style={StyleSheet.absoluteFill}
+                device={device!}
+                isActive={focused && active}
+                video
+                audio={false}
+                frameProcessor={available ? frameProcessor : undefined}
+                onInitialized={() => setInitialized(true)}
+                onError={(e) => setCameraError(e.message)}
+              />
+              <View pointerEvents="none" style={styles.outline}>
+                <BodyOutline
+                  width={180}
+                  height={300}
+                  valid={validation.isValid}
+                />
+              </View>
+              <View style={styles.status}>
+                <Text style={styles.statusText}>
+                  {phase === "countdown"
+                    ? `${count}`
+                    : phase === "recording"
+                      ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")} recording`
+                      : available
+                        ? validation.instructionText
+                        : "Live framing is unavailable. Import a video below."}
+                </Text>
+              </View>
+            </>
+          ) : (
+            <View style={styles.cameraEmpty}>
+              <Text style={styles.emptyTitle}>
+                {!hasPermission
+                  ? "Set up your camera"
+                  : cameraError
+                    ? "Camera unavailable"
+                    : "Import a tennis video"}
+              </Text>
+              <Text style={styles.subtitle}>
+                {!hasPermission
+                  ? "Allow camera access for guided recording."
+                  : "You can analyse an existing recording from your photo library."}
+              </Text>
+              {!hasPermission && (
+                <Button
+                  title="Enable camera"
+                  onPress={async () => {
+                    if (!(await requestPermission()))
+                      await Linking.openSettings();
+                  }}
+                />
+              )}
+            </View>
+          )}
+        </View>
+        <Text style={styles.hint}>
+          Keep your head, racket hand and feet in frame. Use a steady camera,
+          good light and a slight side view. We analyse the clearest swing in
+          your clip.
+        </Text>
+        {cameraVisible && (
+          <Button
+            title={
+              phase === "recording"
+                ? "Stop recording"
+                : phase === "countdown"
+                  ? `Starting in ${count}...`
+                  : phase === "stopping"
+                    ? "Saving recording..."
+                    : "Record stroke"
+            }
+            disabled={phase === "preview" ? !ready : phase !== "recording"}
+            onPress={() => {
+              if (phase === "recording") void stop();
+              else {
+                setCount(3);
+                setRecordingPhase("countdown");
+              }
+            }}
+          />
+        )}
+        <Button
+          title="Choose a video"
+          variant="secondary"
+          disabled={phase !== "preview"}
+          onPress={importVideo}
+        />
+        <Text style={styles.hint}>
+          Up to 5 minutes · MP4 or MOV · Private to your account
+        </Text>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
-
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
-  permissionContainer: {
-    flex: 1,
-    backgroundColor: colors.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.lg,
-    padding: spacing.xl,
-  },
-  permissionBtn: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    borderRadius: 10,
+  page: { flex: 1, backgroundColor: colors.background },
+  content: { padding: spacing.lg, gap: 16 },
+  title: { color: colors.text.primary, fontSize: 26, fontWeight: "700" },
+  subtitle: { color: colors.text.secondary, lineHeight: 22 },
+  options: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
+  choice: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 20,
     borderWidth: 1,
+    borderColor: colors.border,
+  },
+  selected: {
+    backgroundColor: colors.primaryMuted,
     borderColor: colors.primary,
   },
-  outlineWrap: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  topBar: {
-    position: 'absolute',
-    top: 60,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-  },
-  instructionPill: {
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+  choiceText: { color: colors.text.primary, fontSize: 13 },
+  preview: {
+    height: 380,
     borderRadius: 20,
-    maxWidth: 280,
+    overflow: "hidden",
+    backgroundColor: colors.surface,
   },
-  instructionText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '500',
-    textAlign: 'center',
+  previewEmpty: { height: 220 },
+  outline: {
+    ...StyleSheet.absoluteFill,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  recIndicator: {
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
+  status: {
+    position: "absolute",
+    bottom: 12,
+    left: 12,
+    right: 12,
+    padding: 12,
+    backgroundColor: "#102018dd",
+    borderRadius: 12,
   },
-  recDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.error,
-  },
-  recTimer: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '600',
-    fontVariant: ['tabular-nums'],
-  },
-  bottomBar: {
-    position: 'absolute',
-    bottom: 60,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  hint: {
-    color: 'rgba(255,255,255,0.7)',
-    textAlign: 'center',
-    lineHeight: 18,
-  },
-  recordBtn: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    borderWidth: 4,
-    borderColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.3)',
-  },
-  recordBtnStop: {
-    borderColor: colors.error,
-  },
-  recordBtnDisabled: {
-    opacity: 0.5,
-  },
-  recordCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: '#fff',
-  },
-  recordCircleReady: {
-    backgroundColor: colors.primary,
-  },
-  stopSquare: {
-    width: 28,
-    height: 28,
-    borderRadius: 6,
-    backgroundColor: colors.error,
-  },
+  statusText: { color: "#fff", textAlign: "center", fontWeight: "600" },
+  cameraEmpty: { flex: 1, justifyContent: "center", padding: 24, gap: 18 },
+  emptyTitle: { color: colors.text.primary, fontSize: 22, fontWeight: "600" },
+  hint: { color: colors.text.muted, fontSize: 12, lineHeight: 18 },
 });

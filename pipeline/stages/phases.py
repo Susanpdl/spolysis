@@ -28,14 +28,16 @@ _SERVE_UPWARD_THRESHOLD = 0.15  # ~15 cm for a normalised skeleton ~1 m tall
 
 @dataclass
 class StrokePhases:
-    preparation: tuple[int, int]      # (start, end) frame indices - inclusive
+    preparation: tuple[int, int]  # (start, end) frame indices - inclusive
     backswing: tuple[int, int]
-    contact: int                       # single frame
+    contact: int  # single frame
     follow_through: tuple[int, int]
     total_frames: int
 
 
-def _savgol_safe(signal: np.ndarray, window: int = _SAVGOL_WINDOW, poly: int = _SAVGOL_POLY) -> np.ndarray:
+def _savgol_safe(
+    signal: np.ndarray, window: int = _SAVGOL_WINDOW, poly: int = _SAVGOL_POLY
+) -> np.ndarray:
     """Apply SavGol with automatic window reduction for short sequences."""
     T = len(signal)
     if T < 4:
@@ -66,9 +68,9 @@ def _wrist_speed(keypoints_3d: np.ndarray) -> np.ndarray:
     Compute smoothed right-wrist 3D speed from a (T, 17, 3) sequence.
     Returns (T-1,) speeds in the same unit as keypoints_3d (mm/frame).
     """
-    wrist_pos = keypoints_3d[:, _R_WRIST, :]          # (T, 3)
-    diff = np.diff(wrist_pos, axis=0)                  # (T-1, 3)
-    speed = np.linalg.norm(diff, axis=1)               # (T-1,)
+    wrist_pos = keypoints_3d[:, _R_WRIST, :]  # (T, 3)
+    diff = np.diff(wrist_pos, axis=0)  # (T-1, 3)
+    speed = np.linalg.norm(diff, axis=1)  # (T-1,)
     return _savgol_safe(speed)
 
 
@@ -91,9 +93,7 @@ def detect_phases(
         StrokePhases with all indices in the original frame numbering.
     """
     if keypoints_3d.ndim != 3 or keypoints_3d.shape[1:] != (17, 3):
-        raise ValueError(
-            f"Expected (T, 17, 3) input, got {keypoints_3d.shape}"
-        )
+        raise ValueError(f"Expected (T, 17, 3) input, got {keypoints_3d.shape}")
     if stroke_type not in ("forehand", "backhand", "serve", "volley"):
         raise ValueError(
             f"Unknown stroke_type '{stroke_type}'; must be one of "
@@ -101,40 +101,12 @@ def detect_phases(
         )
 
     T = keypoints_3d.shape[0]
+    if T < 3 or not np.isfinite(keypoints_3d).all():
+        raise ValueError("At least three finite pose frames are required")
     speed = _wrist_speed(keypoints_3d)  # (T-1,)
 
     # --- Contact frame ---
-    contact_frame = int(np.argmax(speed))
-
-    if stroke_type == "serve":
-        # Check for a distinct upward-velocity peak preceding the main swing peak.
-        # The trophy position involves a large upward wrist movement that can
-        # register as a speed peak before the actual contact peak.
-        wrist_y = keypoints_3d[:, _R_WRIST, 1]  # vertical axis
-        skel_height = float(np.abs(keypoints_3d).max())  # rough scale
-        upward_disp = wrist_y - wrist_y[0]
-        if skel_height > 1e-6:
-            upward_disp_norm = upward_disp / skel_height
-        else:
-            upward_disp_norm = upward_disp
-
-        # Find speed peaks before the main peak
-        pre_speed = speed[: contact_frame]
-        if len(pre_speed) > 2:
-            pre_peaks = _find_local_minima(-pre_speed)  # invert to find maxima
-            if len(pre_peaks) > 0:
-                # Check whether the last pre-peak coincides with upward displacement
-                candidate = int(pre_peaks[-1])
-                if (
-                    candidate < contact_frame
-                    and float(upward_disp_norm[candidate]) > _SERVE_UPWARD_THRESHOLD
-                ):
-                    # The upward toss phase is the real contact-equivalent anchor
-                    contact_frame = candidate
-                    log.info(
-                        "serve_trophy_peak_used_as_contact",
-                        contact_frame=contact_frame,
-                    )
+    contact_frame = min(T - 2, max(1, int(np.argmax(speed)) + 1))
 
     # --- Backswing start ---
     # Search the region before contact for the most recent speed local minimum,
@@ -209,4 +181,6 @@ if __name__ == "__main__":
     print(f"Preparation:    frames {phases.preparation[0]}-{phases.preparation[1]}")
     print(f"Backswing:      frames {phases.backswing[0]}-{phases.backswing[1]}")
     print(f"Contact:        frame  {phases.contact}")
-    print(f"Follow-through: frames {phases.follow_through[0]}-{phases.follow_through[1]}")
+    print(
+        f"Follow-through: frames {phases.follow_through[0]}-{phases.follow_through[1]}"
+    )

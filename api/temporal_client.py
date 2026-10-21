@@ -1,5 +1,6 @@
 from __future__ import annotations
 from temporalio.client import Client
+from temporalio.exceptions import WorkflowAlreadyStartedError
 from api.config import settings
 
 _client: Client | None = None
@@ -16,12 +17,24 @@ async def get_temporal_client() -> Client:
     return _client
 
 
-async def start_analysis_workflow(job_id: str, r2_key: str, tier: str) -> str:
+async def start_analysis_workflow(
+    job_id: str, r2_key: str, tier: str, stroke_type: str, handedness: str
+) -> str:
     client = await get_temporal_client()
-    handle = await client.start_workflow(
-        "TennisAnalysisWorkflow",
-        args=[{"job_id": job_id, "r2_key": r2_key, "tier": tier}],
-        id=f"tennis-analysis-{job_id}",
-        task_queue=settings.temporal_task_queue,
-    )
-    return handle.id
+    workflow_id = f"tennis-analysis-{job_id}"
+    try:
+        await client.start_workflow(
+            "TennisAnalysisWorkflow",
+            {
+                "job_id": job_id,
+                "r2_key": r2_key,
+                "tier": "premium",
+                "stroke_type": stroke_type,
+                "handedness": handedness,
+            },
+            id=workflow_id,
+            task_queue=settings.temporal_task_queue,
+        )
+    except WorkflowAlreadyStartedError:
+        pass
+    return workflow_id

@@ -1,5 +1,6 @@
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
+import type { NavigatorScreenParams } from "@react-navigation/native";
+import type { StrokeType } from "@/services/api";
+import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 export type AuthStackParams = {
   Welcome: undefined;
@@ -9,13 +10,19 @@ export type AuthStackParams = {
 
 export type MainTabParams = {
   Home: undefined;
-  Record: undefined;
+  Record: NavigatorScreenParams<RecordingStackParams>;
   Profile: undefined;
 };
 
 export type RecordingStackParams = {
-  Record: undefined;
-  UploadProgress: { videoUri: string };
+  Capture: undefined;
+  UploadProgress: {
+    videoUri?: string;
+    jobId?: string;
+    strokeType?: StrokeType;
+    handedness?: "right" | "left";
+    contentType?: string;
+  };
   Result: { jobId: string };
 };
 

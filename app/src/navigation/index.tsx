@@ -1,11 +1,11 @@
-import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { View, ActivityIndicator } from 'react-native';
-import { useAuth } from '@/hooks/useAuth';
-import { AuthStack } from './AuthStack';
-import { MainTabs } from './MainTabs';
-import { colors } from '@/theme';
+import React from "react";
+import { NavigationContainer } from "@react-navigation/native";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { View, ActivityIndicator } from "react-native";
+import { useAuth } from "@/hooks/useAuth";
+import { AuthStack } from "./AuthStack";
+import { MainTabs } from "./MainTabs";
+import { colors } from "@/theme";
 
 const Root = createNativeStackNavigator();
 
@@ -14,7 +14,14 @@ export function RootNavigator() {
 
   if (isLoading) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }}>
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: colors.background,
+          justifyContent: "center",
+          alignItems: "center",
+        }}
+      >
         <ActivityIndicator color={colors.primary} size="large" />
       </View>
     );

@@ -30,13 +30,11 @@ def run_pose_estimation(frame_dir: str) -> Pose2DResult:
     except ImportError:
         raise ImportError(
             "mmpose is not installed. Run: pip install mmpose\n"
-            "Then download weights: python -m pipeline.scripts.download_models"
+            "Use the GPU image defined in pipeline/app.py for pinned model weights."
         )
 
     frame_paths = sorted(
-        os.path.join(frame_dir, f)
-        for f in os.listdir(frame_dir)
-        if f.endswith(".jpg")
+        os.path.join(frame_dir, f) for f in os.listdir(frame_dir) if f.endswith(".jpg")
     )
     if not frame_paths:
         raise ValueError(f"No frames found in {frame_dir}")
@@ -46,7 +44,11 @@ def run_pose_estimation(frame_dir: str) -> Pose2DResult:
     if os.path.isfile(_BAKED_CONFIG) and os.path.isfile(_BAKED_WEIGHTS):
         pose2d_arg = _BAKED_CONFIG
         weights_arg = _BAKED_WEIGHTS
-        log.info("rtmpose_using_baked_checkpoint", config=_BAKED_CONFIG, weights=_BAKED_WEIGHTS)
+        log.info(
+            "rtmpose_using_baked_checkpoint",
+            config=_BAKED_CONFIG,
+            weights=_BAKED_WEIGHTS,
+        )
     else:
         log.warning("rtmpose_baked_checkpoint_missing_falling_back_to_metafile")
         pose2d_arg = "rtmpose-l_8xb256-420e_coco-256x192"
@@ -68,6 +70,7 @@ def run_pose_estimation(frame_dir: str) -> Pose2DResult:
 
     all_keypoints = []
     all_bboxes = []
+    previous_box = None
 
     for frame_path in frame_paths:
         results = list(inferencer(frame_path, show=False, return_vis=False))
@@ -78,9 +81,29 @@ def run_pose_estimation(frame_dir: str) -> Pose2DResult:
             continue
 
         preds = results[0]["predictions"][0]
-        # Take the highest-confidence person detection
+        # Track the foreground player rather than switching to a spectator
+        # whenever detection confidence changes between frames.
         if isinstance(preds, list):
-            preds = sorted(preds, key=lambda p: p.get("bbox_score", 0), reverse=True)[0]
+            if not preds:
+                all_keypoints.append(np.zeros((17, 3), dtype=np.float32))
+                all_bboxes.append(np.zeros(4, dtype=np.float32))
+                continue
+
+            def score(person):
+                box = np.asarray(person.get("bbox", [[0, 0, 0, 0]])).reshape(-1)[:4]
+                area = max(0, box[2] - box[0]) * max(0, box[3] - box[1])
+                if previous_box is None:
+                    return area * float(person.get("bbox_score", 1))
+                intersection = np.maximum(
+                    0,
+                    np.minimum(box[2:], previous_box[2:])
+                    - np.maximum(box[:2], previous_box[:2]),
+                ).prod()
+                prior_area = np.maximum(0, previous_box[2:] - previous_box[:2]).prod()
+                return float(intersection / max(area + prior_area - intersection, 1))
+
+            preds = max(preds, key=score)
+        previous_box = np.asarray(preds.get("bbox", [[0, 0, 0, 0]])).reshape(-1)[:4]
 
         kps = np.array(preds["keypoints"], dtype=np.float32)  # (17, 2)
         scores = np.array(preds["keypoint_scores"], dtype=np.float32)  # (17,)
@@ -98,10 +121,15 @@ def run_pose_estimation(frame_dir: str) -> Pose2DResult:
 
 
 if __name__ == "__main__":
-    import argparse, json
-    parser = argparse.ArgumentParser(description="Run RTMPose-x on a directory of frames")
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Run RTMPose-x on a directory of frames"
+    )
     parser.add_argument("--frame-dir", required=True)
-    parser.add_argument("--output", required=True, help="Output .npy file for keypoints")
+    parser.add_argument(
+        "--output", required=True, help="Output .npy file for keypoints"
+    )
     args = parser.parse_args()
     result = run_pose_estimation(args.frame_dir)
     np.save(args.output, result.keypoints)

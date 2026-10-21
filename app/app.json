@@ -6,11 +6,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#0a0a0a"
-    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.spolysis.app",
@@ -37,19 +32,18 @@
     "plugins": [
       "react-native-vision-camera",
       [
-        "react-native-permissions",
-        {
-          "iosPermissions": [
-            "CAMERA",
-            "MICROPHONE",
-            "PHOTO_LIBRARY"
-          ]
-        }
-      ],
-      [
         "expo-image-picker",
         {
           "photosPermission": "Spolysis lets you upload existing videos from your photo library."
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#0a0a0a",
+          "imageWidth": 200
         }
       ]
     ],

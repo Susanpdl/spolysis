@@ -1,77 +1,73 @@
 from __future__ import annotations
-import structlog
-from fastapi import APIRouter, Depends
+
+from fastapi import APIRouter, Depends, HTTPException
 from api.auth import verify_internal_token
-from api.models.job import JobCompleteRequest, JobFailRequest, JobRejectRequest, JobPremiumCompleteRequest
+from api.models.job import JobFailRequest, JobRejectRequest, JobPremiumCompleteRequest
 from api.database import service_client
 from api.redis_client import invalidate_job_cache
 
-log = structlog.get_logger(__name__)
-
 router = APIRouter(
-    prefix="/internal",
-    tags=["internal"],
-    dependencies=[Depends(verify_internal_token)],
+    prefix="/internal", tags=["internal"], dependencies=[Depends(verify_internal_token)]
 )
 
 
-def _safe_db(fn):
-    """Wrap a DB call; log and swallow errors so notifications never return 500."""
-    try:
-        fn()
-    except Exception as e:
-        log.error("internal_db_error", error=str(e))
+def _job(job_id: str) -> dict:
+    rows = (
+        service_client.table("jobs").select("id,status").eq("id", job_id).execute().data
+    )
+    if not rows:
+        raise HTTPException(404, "Job not found")
+    return rows[0]
 
 
-@router.post("/jobs/{job_id}/complete", status_code=200)
-async def complete_job(job_id: str, body: JobCompleteRequest):
-    _safe_db(lambda: service_client.table("results").insert({
-        "job_id": job_id,
-        "stroke_type": body.stroke_type,
-        "fault_label": body.fault_label,
-        "confidence": body.confidence,
-        "recommendation": body.recommendation,
-        "reference_clip_url": body.reference_clip_url,
-    }).execute())
-    _safe_db(lambda: service_client.table("jobs").update({"status": "completed"}).eq("id", job_id).execute())
-    _safe_db(lambda: invalidate_job_cache(job_id))
+@router.post("/jobs/{job_id}/processing")
+def processing_job(job_id: str):
+    _job(job_id)
+    service_client.table("jobs").update({"status": "processing"}).eq("id", job_id).eq(
+        "status", "pending"
+    ).execute()
+    invalidate_job_cache(job_id)
     return {"status": "ok"}
 
 
-@router.post("/jobs/{job_id}/complete_premium", status_code=200)
-async def complete_premium_job(job_id: str, body: JobPremiumCompleteRequest):
-    _safe_db(lambda: service_client.table("results").insert({
-        "job_id": job_id,
-        "stroke_type": body.stroke_type,
-        "fault_label": body.fault_label,
-        "confidence": body.confidence,
-        "recommendation": body.recommendation,
-        "reference_clip_url": body.reference_clip_url,
-        "overlay_video_url": body.overlay_video_url,
-        "skeleton_3d_url": body.skeleton_3d_url,
-        "delta_summary": body.delta_summary,
-        "fault_joints": body.fault_joints,
-    }).execute())
-    _safe_db(lambda: service_client.table("jobs").update({"status": "completed"}).eq("id", job_id).execute())
-    _safe_db(lambda: invalidate_job_cache(job_id))
+@router.post("/jobs/{job_id}/complete_premium")
+def complete_premium_job(job_id: str, body: JobPremiumCompleteRequest):
+    job = _job(job_id)
+    if job["status"] in {"failed", "rejected"}:
+        raise HTTPException(409, "Job is already terminal")
+    # Upsert makes a repeated Temporal callback safe. A database failure must
+    # propagate so Temporal retries instead of reporting a nonexistent result.
+    service_client.table("results").upsert(
+        {"job_id": job_id, **body.model_dump()}, on_conflict="job_id"
+    ).execute()
+    service_client.table("jobs").update(
+        {"status": "completed", "error_message": None}
+    ).eq("id", job_id).execute()
+    invalidate_job_cache(job_id)
     return {"status": "ok"}
 
 
-@router.post("/jobs/{job_id}/fail", status_code=200)
-async def fail_job(job_id: str, body: JobFailRequest):
-    _safe_db(lambda: service_client.table("jobs").update({
-        "status": "failed",
-        "error_message": body.error_message,
-    }).eq("id", job_id).execute())
-    _safe_db(lambda: invalidate_job_cache(job_id))
+@router.post("/jobs/{job_id}/fail")
+def fail_job(job_id: str, body: JobFailRequest):
+    _job(job_id)
+    service_client.table("jobs").update(
+        {
+            "status": "failed",
+            "error_message": body.error_message,
+        }
+    ).eq("id", job_id).in_("status", ["pending", "processing"]).execute()
+    invalidate_job_cache(job_id)
     return {"status": "ok"}
 
 
-@router.post("/jobs/{job_id}/reject", status_code=200)
-async def reject_job(job_id: str, body: JobRejectRequest):
-    _safe_db(lambda: service_client.table("jobs").update({
-        "status": "rejected",
-        "rejection_reason": body.rejection_reason,
-    }).eq("id", job_id).execute())
-    _safe_db(lambda: invalidate_job_cache(job_id))
+@router.post("/jobs/{job_id}/reject")
+def reject_job(job_id: str, body: JobRejectRequest):
+    _job(job_id)
+    service_client.table("jobs").update(
+        {
+            "status": "rejected",
+            "rejection_reason": body.rejection_reason,
+        }
+    ).eq("id", job_id).in_("status", ["pending", "processing"]).execute()
+    invalidate_job_cache(job_id)
     return {"status": "ok"}

@@ -27,6 +27,7 @@ class SmoothResult:
 # for Refining Human Poses in Videos", Zeng et al. 2022)
 # ---------------------------------------------------------------------------
 
+
 def _build_smoothnet(input_dim: int):
     """
     Build the SmoothNet module.
@@ -160,12 +161,15 @@ def smooth_3d(
     SavGol-only, which is still a substantial improvement over raw lifter output.
     """
     if keypoints_3d.ndim != 3 or keypoints_3d.shape[1:] != (17, 3):
-        raise ValueError(
-            f"Expected (T, 17, 3) input, got {keypoints_3d.shape}"
-        )
+        raise ValueError(f"Expected (T, 17, 3) input, got {keypoints_3d.shape}")
 
     T = keypoints_3d.shape[0]
-    log.info("smooth_3d_start", frames=T, savgol_window=savgol_window, savgol_poly=savgol_poly)
+    log.info(
+        "smooth_3d_start",
+        frames=T,
+        savgol_window=savgol_window,
+        savgol_poly=savgol_poly,
+    )
 
     smoothed = _savgol_pass(keypoints_3d, window=savgol_window, poly=savgol_poly)
     log.info("smooth_3d_savgol_done")
@@ -231,4 +235,6 @@ if __name__ == "__main__":
         savgol_poly=args.savgol_poly,
     )
     np.save(args.output, result.keypoints_3d)
-    print(f"Saved smoothed keypoints shape {result.keypoints_3d.shape} to {args.output}")
+    print(
+        f"Saved smoothed keypoints shape {result.keypoints_3d.shape} to {args.output}"
+    )

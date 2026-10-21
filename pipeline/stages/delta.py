@@ -29,12 +29,10 @@ _R_ANKLE = 16
 # Fault threshold in degrees (or mm for wrist_height)
 _FAULT_THRESHOLDS: dict[str, float] = {
     "hip_rotation": 15.0,
-    "shoulder_rotation": 15.0,
     "right_elbow": 20.0,
     "left_elbow": 20.0,
     "right_knee": 20.0,
     "right_shoulder_abduction": 15.0,
-    "right_wrist_height": 50.0,
 }
 
 # Window size to search around worst-fault frame for fault_frames range
@@ -43,8 +41,8 @@ _FAULT_FRAME_WINDOW = 10
 
 @dataclass
 class JointDelta:
-    joint: str       # e.g. "right_elbow", "hip_rotation"
-    phase: str       # "preparation" | "backswing" | "contact" | "follow_through"
+    joint: str  # e.g. "right_elbow", "hip_rotation"
+    phase: str  # "preparation" | "backswing" | "contact" | "follow_through"
     user_deg: float
     ref_deg: float
     delta_deg: float  # user_deg - ref_deg; positive = user > ref
@@ -85,8 +83,7 @@ def _rotation_angle_xz(vec_a: np.ndarray, vec_b: np.ndarray) -> float:
     norm_b = np.linalg.norm(b2)
     if norm_a < 1e-9 or norm_b < 1e-9:
         return 0.0
-    cos_val = np.dot(a2, b2) / (norm_a * norm_b)
-    return float(np.degrees(np.arccos(np.clip(cos_val, -1.0, 1.0))))
+    return float(np.degrees(np.arctan2(a2[0] * b2[1] - a2[1] * b2[0], np.dot(a2, b2))))
 
 
 def _compute_angles(kps: np.ndarray, stroke_type: str) -> dict[str, float]:
@@ -103,12 +100,8 @@ def _compute_angles(kps: np.ndarray, stroke_type: str) -> dict[str, float]:
     angles: dict[str, float] = {}
 
     # Standard elbow flexion angles (applicable to all strokes)
-    angles["right_elbow"] = angle_3d(
-        kps[_R_SHOULDER], kps[_R_ELBOW], kps[_R_WRIST]
-    )
-    angles["left_elbow"] = angle_3d(
-        kps[_L_SHOULDER], kps[_L_ELBOW], kps[_L_WRIST]
-    )
+    angles["right_elbow"] = angle_3d(kps[_R_SHOULDER], kps[_R_ELBOW], kps[_R_WRIST])
+    angles["left_elbow"] = angle_3d(kps[_L_SHOULDER], kps[_L_ELBOW], kps[_L_WRIST])
 
     # Hip rotation: angle between hip vector and shoulder vector in xz plane.
     # Non-zero means the hips and shoulders are not aligned - this captures
@@ -117,27 +110,13 @@ def _compute_angles(kps: np.ndarray, stroke_type: str) -> dict[str, float]:
     shoulder_vec = kps[_R_SHOULDER] - kps[_L_SHOULDER]
     angles["hip_rotation"] = _rotation_angle_xz(hip_vec, shoulder_vec)
 
-    # Shoulder rotation: torso-forward is approximated as the cross product of
-    # the hip vector with the vertical (0,1,0), giving the direction the player
-    # faces. Angle between that forward direction and the shoulder vector
-    # captures whether the shoulders are open or closed at contact.
-    up = np.array([0.0, 1.0, 0.0])
-    torso_forward = np.cross(hip_vec, up)
-    angles["shoulder_rotation"] = _rotation_angle_xz(torso_forward, shoulder_vec)
-
     # Knee flexion
-    angles["right_knee"] = angle_3d(
-        kps[_R_HIP], kps[_R_KNEE], kps[_R_ANKLE]
-    )
+    angles["right_knee"] = angle_3d(kps[_R_HIP], kps[_R_KNEE], kps[_R_ANKLE])
 
     if stroke_type == "serve":
         # Shoulder abduction: arm raised from body (important for trophy position)
         angles["right_shoulder_abduction"] = angle_3d(
             kps[_R_HIP], kps[_R_SHOULDER], kps[_R_ELBOW]
-        )
-        # Wrist height relative to shoulder; positive = wrist above shoulder
-        angles["right_wrist_height"] = float(
-            kps[_R_WRIST, 1] - kps[_R_SHOULDER, 1]
         )
 
     return angles
@@ -180,7 +159,14 @@ def _avg_angles(
             accum[k] = accum.get(k, 0.0) + v
 
     n = len(valid)
-    return {k: v / n for k, v in accum.items()}
+    result = {k: v / n for k, v in accum.items()}
+    rotations = np.radians(
+        [_compute_angles(keypoints_3d[f], stroke_type)["hip_rotation"] for f in valid]
+    )
+    result["hip_rotation"] = float(
+        np.degrees(np.arctan2(np.sin(rotations).mean(), np.cos(rotations).mean()))
+    )
+    return result
 
 
 def _find_worst_fault_frames(
@@ -204,7 +190,10 @@ def _find_worst_fault_frames(
         u_angles = _compute_angles(user_3d[f], stroke_type)
         r_angles = _compute_angles(ref_aligned[f], stroke_type)
         if worst_joint in u_angles and worst_joint in r_angles:
-            delta = abs(u_angles[worst_joint] - r_angles[worst_joint])
+            difference = u_angles[worst_joint] - r_angles[worst_joint]
+            if worst_joint == "hip_rotation":
+                difference = (difference + 180) % 360 - 180
+            delta = abs(difference)
             if delta > max_delta:
                 max_delta = delta
                 worst_frame = f
@@ -263,13 +252,17 @@ def compute_deltas(
             u_val = user_avg[joint]
             r_val = ref_avg[joint]
             delta = u_val - r_val
-            deltas.append(JointDelta(
-                joint=joint,
-                phase=phase_name,
-                user_deg=round(u_val, 2),
-                ref_deg=round(r_val, 2),
-                delta_deg=round(delta, 2),
-            ))
+            if joint == "hip_rotation":
+                delta = (delta + 180) % 360 - 180
+            deltas.append(
+                JointDelta(
+                    joint=joint,
+                    phase=phase_name,
+                    user_deg=round(u_val, 2),
+                    ref_deg=round(r_val, 2),
+                    delta_deg=round(delta, 2),
+                )
+            )
 
             if phase_name == "contact":
                 summary[joint] = round(delta, 2)

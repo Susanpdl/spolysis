@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import { create } from "zustand";
 
 interface RecordingState {
   videoUri: string | null;
@@ -21,5 +21,6 @@ export const recordingStore = create<RecordingState>((set) => ({
   setJobId: (jobId) => set({ jobId }),
   setUploadProgress: (uploadProgress) => set({ uploadProgress }),
   setUploading: (isUploading) => set({ isUploading }),
-  reset: () => set({ videoUri: null, jobId: null, isUploading: false, uploadProgress: 0 }),
+  reset: () =>
+    set({ videoUri: null, jobId: null, isUploading: false, uploadProgress: 0 }),
 }));

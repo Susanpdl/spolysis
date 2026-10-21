@@ -1,12 +1,15 @@
 from __future__ import annotations
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Literal
 from datetime import datetime
 
 
 class UploadUrlRequest(BaseModel):
-    tier: Literal["free", "premium"]
-    filename: str
+    tier: Literal["premium"] = "premium"
+    filename: str = Field(min_length=1, max_length=255)
+    stroke_type: Literal["forehand", "backhand", "serve", "volley"]
+    handedness: Literal["right", "left"] = "right"
+    content_type: Literal["video/mp4", "video/quicktime"] = "video/mp4"
 
 
 class UploadUrlResponse(BaseModel):
@@ -32,27 +35,15 @@ class JobListResponse(BaseModel):
     page_size: int
 
 
-class UploadConfirmRequest(BaseModel):
-    pass  # body is empty; job_id is in the path
-
-
-class JobCompleteRequest(BaseModel):
-    stroke_type: str
-    fault_label: str | None = None
-    confidence: float
-    recommendation: str
-    reference_clip_url: str | None = None
-
-
 class JobPremiumCompleteRequest(BaseModel):
     stroke_type: str
     fault_label: str | None = None
-    confidence: float
+    confidence: float = Field(ge=0, le=1)
     recommendation: str
-    overlay_video_url: str | None = None
-    skeleton_3d_url: str | None = None
-    delta_summary: dict | None = None
-    fault_joints: list[str] | None = None
+    overlay_video_url: str
+    skeleton_3d_url: str
+    delta_summary: dict[str, float]
+    fault_joints: list[str]
     reference_clip_url: str | None = None
 
 

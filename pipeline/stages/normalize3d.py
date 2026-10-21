@@ -8,12 +8,18 @@ import numpy as np
 import structlog
 
 from pipeline.utils.skeleton import (
-    L_SHOULDER, R_SHOULDER,
-    L_ELBOW, R_ELBOW,
-    L_WRIST, R_WRIST,
-    L_HIP, R_HIP,
-    L_KNEE, R_KNEE,
-    L_ANKLE, R_ANKLE,
+    L_SHOULDER,
+    R_SHOULDER,
+    L_ELBOW,
+    R_ELBOW,
+    L_WRIST,
+    R_WRIST,
+    L_HIP,
+    R_HIP,
+    L_KNEE,
+    R_KNEE,
+    L_ANKLE,
+    R_ANKLE,
 )
 
 log = structlog.get_logger(__name__)
@@ -22,16 +28,16 @@ log = structlog.get_logger(__name__)
 # Spine is handled separately because it connects computed midpoints, not
 # individual joints, so it cannot be expressed as a simple index pair.
 _BONE_PAIRS: dict[str, tuple[int, int]] = {
-    "left_upper_arm":  (L_SHOULDER, L_ELBOW),
+    "left_upper_arm": (L_SHOULDER, L_ELBOW),
     "right_upper_arm": (R_SHOULDER, R_ELBOW),
-    "left_forearm":    (L_ELBOW, L_WRIST),
-    "right_forearm":   (R_ELBOW, R_WRIST),
-    "left_thigh":      (L_HIP, L_KNEE),
-    "right_thigh":     (R_HIP, R_KNEE),
-    "left_shin":       (L_KNEE, L_ANKLE),
-    "right_shin":      (R_KNEE, R_ANKLE),
-    "shoulder_width":  (L_SHOULDER, R_SHOULDER),
-    "hip_width":       (L_HIP, R_HIP),
+    "left_forearm": (L_ELBOW, L_WRIST),
+    "right_forearm": (R_ELBOW, R_WRIST),
+    "left_thigh": (L_HIP, L_KNEE),
+    "right_thigh": (R_HIP, R_KNEE),
+    "left_shin": (L_KNEE, L_ANKLE),
+    "right_shin": (R_KNEE, R_ANKLE),
+    "shoulder_width": (L_SHOULDER, R_SHOULDER),
+    "hip_width": (L_HIP, R_HIP),
 }
 
 _STABLE_WINDOW = 10  # frames used for "most stable" bone length measurement
@@ -39,9 +45,13 @@ _STABLE_WINDOW = 10  # frames used for "most stable" bone length measurement
 
 @dataclass
 class NormalizedSkeleton:
-    keypoints_3d: np.ndarray       # (T, 17, 3) root-centered, bone-lengths locked to subject
-    bone_lengths: dict[str, float] = field(default_factory=dict)  # bone name -> length in mm
-    root_trajectory: np.ndarray = field(default_factory=lambda: np.zeros((0, 3)))  # (T, 3)
+    keypoints_3d: np.ndarray  # (T, 17, 3) root-centered, bone-lengths locked to subject
+    bone_lengths: dict[str, float] = field(
+        default_factory=dict
+    )  # bone name -> length in mm
+    root_trajectory: np.ndarray = field(
+        default_factory=lambda: np.zeros((0, 3))
+    )  # (T, 3)
 
 
 def _find_stable_window(keypoints_3d: np.ndarray) -> slice:
@@ -86,13 +96,13 @@ def _measure_bone_lengths(keypoints_3d: np.ndarray) -> dict[str, float]:
 
     for bone_name, (idx_a, idx_b) in _BONE_PAIRS.items():
         diffs = window[:, idx_a, :] - window[:, idx_b, :]  # (W, 3)
-        lengths = np.linalg.norm(diffs, axis=1)             # (W,)
+        lengths = np.linalg.norm(diffs, axis=1)  # (W,)
         bone_lengths[bone_name] = float(lengths.mean())
 
     # Spine: midpoint(hips) to midpoint(shoulders)
-    hip_mid = (window[:, L_HIP, :] + window[:, R_HIP, :]) / 2.0       # (W, 3)
+    hip_mid = (window[:, L_HIP, :] + window[:, R_HIP, :]) / 2.0  # (W, 3)
     shoulder_mid = (window[:, L_SHOULDER, :] + window[:, R_SHOULDER, :]) / 2.0  # (W, 3)
-    spine_lengths = np.linalg.norm(shoulder_mid - hip_mid, axis=1)     # (W,)
+    spine_lengths = np.linalg.norm(shoulder_mid - hip_mid, axis=1)  # (W,)
     bone_lengths["spine"] = float(spine_lengths.mean())
 
     return bone_lengths
@@ -113,16 +123,16 @@ def normalize_skeleton(keypoints_3d: np.ndarray) -> NormalizedSkeleton:
     needs to blend smoothly around flawed windows.
     """
     if keypoints_3d.ndim != 3 or keypoints_3d.shape[1:] != (17, 3):
-        raise ValueError(
-            f"Expected (T, 17, 3) input, got {keypoints_3d.shape}"
-        )
+        raise ValueError(f"Expected (T, 17, 3) input, got {keypoints_3d.shape}")
 
     T = keypoints_3d.shape[0]
     log.info("normalize_skeleton_start", frames=T)
 
     # Step 1: root centering
     # Root = midpoint of L_HIP and R_HIP per frame
-    root_trajectory = (keypoints_3d[:, L_HIP, :] + keypoints_3d[:, R_HIP, :]) / 2.0  # (T, 3)
+    root_trajectory = (
+        keypoints_3d[:, L_HIP, :] + keypoints_3d[:, R_HIP, :]
+    ) / 2.0  # (T, 3)
     centered = keypoints_3d - root_trajectory[:, np.newaxis, :]  # (T, 17, 3)
 
     log.info(
@@ -181,4 +191,6 @@ if __name__ == "__main__":
         f"Saved normalized keypoints shape {result.keypoints_3d.shape} "
         f"to {args.output_keypoints}"
     )
-    print(f"Saved bone lengths ({len(result.bone_lengths)} bones) to {args.output_bone_lengths}")
+    print(
+        f"Saved bone lengths ({len(result.bone_lengths)} bones) to {args.output_bone_lengths}"
+    )

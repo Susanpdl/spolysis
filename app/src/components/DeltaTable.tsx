@@ -1,6 +1,6 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { colors, typography, spacing } from '@/theme';
+import React from "react";
+import { View, Text, StyleSheet } from "react-native";
+import { colors, typography, spacing } from "@/theme";
 
 interface DeltaTableProps {
   deltaSummary: Record<string, number>;
@@ -8,9 +8,7 @@ interface DeltaTableProps {
 }
 
 function toTitleCase(key: string): string {
-  return key
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function deltaColor(delta: number, isFault: boolean): string {
@@ -19,18 +17,23 @@ function deltaColor(delta: number, isFault: boolean): string {
   return colors.text.muted;
 }
 
-export default function DeltaTable({ deltaSummary, faultJoints }: DeltaTableProps) {
+export default function DeltaTable({
+  deltaSummary,
+  faultJoints,
+}: DeltaTableProps) {
   const sorted = Object.entries(deltaSummary).sort(
     ([, a], [, b]) => Math.abs(b) - Math.abs(a),
   );
 
   return (
     <View style={styles.card}>
-      <Text style={[typography.label, styles.title]}>Biomechanical analysis</Text>
+      <Text style={[typography.label, styles.title]}>
+        Angle differences at estimated contact
+      </Text>
 
       {sorted.map(([joint, delta]) => {
         const isFault = faultJoints.includes(joint);
-        const sign = delta >= 0 ? '+' : '';
+        const sign = delta >= 0 ? "+" : "";
         const formatted = `${sign}${Math.round(delta)}°`;
         const textColor = deltaColor(delta, isFault);
 
@@ -38,9 +41,16 @@ export default function DeltaTable({ deltaSummary, faultJoints }: DeltaTableProp
           <View key={joint} style={[styles.row, isFault && styles.rowFault]}>
             <View style={styles.jointCell}>
               {isFault && <Text style={styles.faultMarker}>●</Text>}
-              <Text style={[typography.bodySmall, styles.jointName]}>{toTitleCase(joint)}</Text>
+              <Text style={[typography.bodySmall, styles.jointName]}>
+                {toTitleCase(joint)}
+              </Text>
             </View>
-            <Text style={[typography.bodySmall, { color: textColor, fontWeight: '700' }]}>
+            <Text
+              style={[
+                typography.bodySmall,
+                { color: textColor, fontWeight: "700" },
+              ]}
+            >
               {formatted}
             </Text>
           </View>
@@ -48,7 +58,9 @@ export default function DeltaTable({ deltaSummary, faultJoints }: DeltaTableProp
       })}
 
       <View style={styles.legendRow}>
-        <Text style={[typography.caption, styles.legendText]}>● Fault detected</Text>
+        <Text style={[typography.caption, styles.legendText]}>
+          ● Larger difference from this reference
+        </Text>
       </View>
     </View>
   );
@@ -66,9 +78,9 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.sm,
     borderRadius: 8,
@@ -77,8 +89,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.errorMuted,
   },
   jointCell: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: spacing.xs,
     flex: 1,
   },

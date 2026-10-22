@@ -7,6 +7,8 @@ The app includes analysis history, video playback and sharing, joint-angle compa
 Image keypoints remain an internal input to monocular 3D reconstruction.
 All measurements are estimates in relative coordinates, not calibrated biomechanical measurements.
 
+Start with [Get started](#get-started) to set up the project and complete your first analysis.
+
 ## Current status
 
 The 3D GPU pipeline is deployed on Modal and has processed real THETIS forehand, backhand, serve, and volley videos through reconstruction, comparison, correction, and video rendering.
@@ -39,31 +41,103 @@ The on-device framing check uses Apple Vision on iOS and ML Kit on Android.
 Future improvements and their tradeoffs are collected in [v2 options](v2.md).
 They are proposals awaiting a product decision, not a committed roadmap.
 
-## Local development
+## Get started
 
+### 1. Prepare your development tools
+
+Run the commands below from the directory containing this README, `app/`, and `api/`.
 The app uses Expo SDK 57, React Native 0.86, and the New Architecture.
-Use Node 22.13 or newer, Python 3.11, Xcode 26.4 or newer, and CocoaPods.
-Copy `.env.example` to `.env` and configure the required services.
-Copy only the three `EXPO_PUBLIC_*` values into `app/.env`; never put service credentials in the app.
-
-```sh
-npm --prefix app ci
-npm --prefix app run ios
-```
+Install Node 22.13 or newer and Python 3.11.
+For iOS, use a Mac with Xcode 26.4 or newer, an installed iOS simulator runtime, and CocoaPods.
+For Android, install Android Studio, its SDK tools, and an emulator or connect an Android phone.
 
 The app requires a native development build because of its camera and pose modules.
 Expo Go cannot run those modules.
 A real phone is needed for live recording; the simulator supports imported video and result review.
 
+### 2. Configure your services
+
+Create local configuration files without overwriting existing settings:
+
 ```sh
-python -m venv .venv
-source .venv/bin/activate
-pip install -r api/requirements.txt modal==1.5.3
-uvicorn api.main:app --reload --port 8000
+cp -n .env.example .env
+cp -n app/.env.example app/.env
 ```
 
-Set `EXPO_PUBLIC_API_URL` to a URL reachable from the test device.
-A physical phone cannot reach your computer through `localhost`.
+Fill in `.env` with your Supabase, private R2, Upstash, Temporal, Modal, and internal API settings.
+Use a working Supabase project and apply the migrations listed under [Database and deployment](#database-and-deployment).
+The production Supabase outage recorded in [Implementation status](docs/IMPLEMENTATION_STATUS.md) must be resolved, or a working development project used, before sign-in can succeed.
+
+Set these three values in `app/.env`:
+
+| Variable | Value |
+| --- | --- |
+| `EXPO_PUBLIC_API_URL` | Your running API's URL, reachable from the device. |
+| `EXPO_PUBLIC_SUPABASE_URL` | Your Supabase project URL. |
+| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | That project's public anon key. |
+
+Keep service-role keys, storage credentials, and internal secrets out of `app/.env`.
+For a local API, use `http://localhost:8000` on the iOS simulator, `http://10.0.2.2:8000` on the Android emulator, or your computer's LAN IP on a physical phone connected to the same network.
+Restart Metro after changing app environment values.
+
+### 3. Start the API and analysis worker
+
+In one terminal, create the Python environment and start the API:
+
+```sh
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -r api/requirements.txt modal==1.5.3
+uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Check that `http://localhost:8000/health` responds.
+This confirms that the API is running; completing an analysis also requires the database, storage, Temporal worker, and deployed Modal pipeline.
+
+In another terminal, start the CPU workflow worker:
+
+```sh
+source .venv/bin/activate
+python -m pipeline.temporal.worker
+```
+
+Set `INTERNAL_API_URL=http://localhost:8000` when both the API and worker run on your computer.
+Use the same `INTERNAL_API_SECRET`, Temporal namespace, and task queue for both processes.
+Configure Modal authentication and deploy the GPU pipeline using [Pipeline setup](pipeline/README.md) before submitting an analysis.
+If you use an already configured hosted API and worker, skip the local server commands and point the app at that API.
+
+### 4. Launch the app
+
+Install dependencies once:
+
+```sh
+npm --prefix app ci
+```
+
+Build and launch on your chosen platform:
+
+```sh
+# iOS
+npm --prefix app run ios
+
+# Android
+npm --prefix app run android
+```
+
+These commands also build the embedded 3D viewer and start Metro.
+For subsequent sessions with the native development build already installed, run `npm --prefix app start` and open that build on your device or simulator.
+Keep Metro running while using the development app.
+
+### 5. Complete your first analysis
+
+1. Tap **Get Started** on the welcome screen to create an account, confirm your email if required, and sign in.
+2. On the empty analyses screen, tap **Start your first analysis**.
+3. Choose your stroke type and playing hand, then record or import a video with your full body and racket in view.
+4. Wait for the upload and analysis to finish.
+5. Review the correction overlay, rotate and scrub the 3D viewer, and compare the suggested changes.
+
+If you need to check the UI without working backend services, follow the isolated fixture instructions in [Native UI checks](app/e2e/README.md).
+The fixture is for development only and does not validate production sign-in or reconstruction accuracy.
 
 ## Database and deployment
 

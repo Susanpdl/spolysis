@@ -1,8 +1,9 @@
 import { SafeAreaView } from "react-native-safe-area-context";
 import React from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, ScrollView, StyleSheet } from "react-native";
 import { AuthScreenProps } from "@/navigation/types";
 import { Button } from "@/components/Button";
+import { GettingStarted } from "@/components/GettingStarted";
 import { colors, typography, spacing } from "@/theme";
 
 export default function WelcomeScreen({
@@ -10,7 +11,7 @@ export default function WelcomeScreen({
 }: AuthScreenProps<"Welcome">) {
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
+      <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.hero}>
           <View style={styles.logoMark}>
             <Text style={styles.logoText}>SP</Text>
@@ -22,37 +23,23 @@ export default function WelcomeScreen({
           </Text>
         </View>
 
-        <View style={styles.featureList}>
-          {[
-            { icon: "🎾", text: "Record your stroke with guided framing" },
-            { icon: "🧠", text: "Explore your movement in 3D" },
-            {
-              icon: "🏆",
-              text: "Compare your technique and review corrections",
-            },
-          ].map(({ icon, text }) => (
-            <View key={text} style={styles.featureRow}>
-              <Text style={styles.featureIcon}>{icon}</Text>
-              <Text style={[typography.bodySmall, styles.featureText]}>
-                {text}
-              </Text>
-            </View>
-          ))}
-        </View>
+        <GettingStarted />
 
         <View style={styles.actions}>
           <Button
-            title="Create account"
+            title="Get Started"
             onPress={() => navigation.navigate("Signup")}
           />
           <Button
             title="Sign in"
             variant="secondary"
             onPress={() => navigation.navigate("Login")}
-            style={{ marginTop: spacing.sm }}
           />
+          <Text style={styles.accountHint}>
+            Create an account to save your analyses.
+          </Text>
         </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -63,12 +50,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
-    flex: 1,
+    flexGrow: 1,
     paddingHorizontal: spacing.lg,
     justifyContent: "space-between",
-    paddingVertical: spacing.xl,
+    paddingVertical: spacing.lg,
+    gap: spacing.lg,
   },
-  hero: { alignItems: "center", marginTop: spacing.xxl },
+  hero: { alignItems: "center", marginTop: spacing.md },
   logoMark: {
     width: 72,
     height: 72,
@@ -86,9 +74,11 @@ const styles = StyleSheet.create({
     maxWidth: 280,
     lineHeight: 24,
   },
-  featureList: { gap: spacing.md },
-  featureRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  featureIcon: { fontSize: 20, width: 28, textAlign: "center" },
-  featureText: { color: colors.text.secondary, flex: 1 },
-  actions: { gap: 0 },
+  actions: { gap: spacing.sm },
+  accountHint: {
+    ...typography.caption,
+    color: colors.text.secondary,
+    textAlign: "center",
+    marginTop: spacing.xs,
+  },
 });

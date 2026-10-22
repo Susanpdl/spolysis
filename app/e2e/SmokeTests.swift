@@ -6,10 +6,18 @@ final class SmokeTests: XCTestCase {
     continueAfterFailure = false
     let app = XCUIApplication(bundleIdentifier: "com.spolysis.app")
     app.launch()
-    XCTAssertTrue(app.buttons["Create account"].waitForExistence(timeout: 45))
+    XCTAssertTrue(app.buttons["Get Started"].waitForExistence(timeout: 45))
+    XCTAssertTrue(app.staticTexts["Your first analysis"].exists)
+    XCTAssertTrue(app.staticTexts["Choose your stroke"].exists)
+    XCTAssertTrue(app.staticTexts["Record or import a video"].exists)
+    XCTAssertTrue(app.staticTexts["Explore your swing in 3D"].exists)
     XCTAssertTrue(app.buttons["Sign in"].exists)
-    XCTAssertFalse(app.staticTexts["2D fault detection - free, instant"].exists)
-    app.buttons["Create account"].press(forDuration: 0.15)
+    let welcome = XCTAttachment(screenshot: app.screenshot())
+    welcome.name = "Get started"
+    welcome.lifetime = .keepAlways
+    add(welcome)
+    if !app.buttons["Get Started"].isHittable { app.swipeUp() }
+    app.buttons["Get Started"].press(forDuration: 0.15)
     XCTAssertTrue(app.textFields["you@example.com"].waitForExistence(timeout: 10))
     XCTAssertTrue(app.secureTextFields["At least 8 characters"].exists)
     let attachment = XCTAttachment(screenshot: app.screenshot())
@@ -114,7 +122,7 @@ final class SignedInTests: XCTestCase {
     capture(app, name: "Account")
     app.buttons["Sign out"].tap()
     app.alerts.buttons["Sign out"].tap()
-    XCTAssertTrue(app.buttons["Create account"].waitForExistence(timeout: 15))
+    XCTAssertTrue(app.buttons["Get Started"].waitForExistence(timeout: 15))
   }
 
   @MainActor

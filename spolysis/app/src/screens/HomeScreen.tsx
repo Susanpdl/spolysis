@@ -14,6 +14,7 @@ import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import { api, Job } from "@/services/api";
 import { JobStatusBadge } from "@/components/JobStatusBadge";
 import { Button } from "@/components/Button";
+import { GettingStarted } from "@/components/GettingStarted";
 import { authStore } from "@/store/authStore";
 import { colors } from "@/theme";
 import type { MainTabParams } from "@/navigation/types";
@@ -73,15 +74,16 @@ export default function HomeScreen() {
                 <Text style={styles.emptyTitle}>
                   {query.isError
                     ? "Could not load analyses"
-                    : "See your stroke differently"}
+                    : "Get started"}
                 </Text>
                 <Text style={styles.description}>
                   {query.isError
                     ? "Check your connection, then try again."
                     : "Record or upload a tennis stroke to explore your movement in 3D."}
                 </Text>
+                {!query.isError && <GettingStarted />}
                 <Button
-                  title={query.isError ? "Retry" : "Analyse a stroke"}
+                  title={query.isError ? "Retry" : "Start your first analysis"}
                   onPress={() => {
                     if (query.isError) void query.refetch();
                     else navigation.navigate("Record", { screen: "Capture" });

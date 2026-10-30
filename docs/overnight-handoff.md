@@ -2,8 +2,8 @@
 
 ## Current phase
 
-Iteration 2 implements analysis identity isolation and upload-confirmation recovery.
-Native validation and cleanup for this batch are complete.
+Iteration 3 implements trustworthy history failure and pagination recovery.
+Consolidated native validation, screenshot review, and cleanup are complete for this batch.
 Work stays in `overnight/prepared`; no worker commits, pushes, deployment, production mutations, or additional agents.
 GNHF owns `notes.md`; checkpoint status goes in ignored iteration sidecars.
 
@@ -18,6 +18,9 @@ GNHF owns `notes.md`; checkpoint status goes in ignored iteration sidecars.
 - Native tests cover distinct-job navigation, rejection guidance, pending-job restart, and confirmation retry with transfer counters.
 - Recovery test setup resets fixture state before every test, because assertion aborts can bypass Swift defer cleanup.
 - Sign-in waits for the delayed native password-save prompt before opening history.
+- Phase 3: loaded history remains visible with a stale-status warning and retry when refresh fails; unavailable initial history no longer claims zero analyses.
+- Failed pagination stops automatic requests after the normal retry budget and offers explicit retry for older analyses.
+- Native history checks cover initial outage, a genuinely empty account, failed processing-job polling, and second-page recovery with bounded request counts.
 
 ## Native setup
 
@@ -52,6 +55,34 @@ Fixture credentials must never enter a distribution build.
 
 ## Verification and evidence
 
+Phase 3 uses the consolidated command below, with its own result bundle and log.
+The fixture now supports real 20-row pagination and independent history and page-failure switches.
+The initial pagination baseline reproduces repeated failed-page requests and no retry control.
+Its first refresh test did not initiate a request, so the corrected refresh baseline uses the existing five-second processing-job poll.
+That baseline verifies failed history responses and no stale-data warning.
+The baseline bundles are `/tmp/spolysis-overnight-phase3-before.xcresult` and `/tmp/spolysis-overnight-phase3-refresh-before.xcresult`.
+Their exported attachments are `.gnhf/evidence/phase3-before` and `.gnhf/evidence/phase3-refresh-before`.
+
+```sh
+xcodebuild clean test -project /tmp/SpolysisOvernightUITests.xcodeproj -scheme SpolysisUITests -only-testing:SpolysisUITests -destination 'platform=iOS Simulator,id=858FB450-9823-4060-AADB-CDB3CBB58445' -derivedDataPath /tmp/spolysis-overnight-ui -resultBundlePath /tmp/spolysis-overnight-phase3-final.xcresult CODE_SIGNING_ALLOWED=NO
+```
+
+Final native result: all 11 tests pass with zero failures in 210.171 seconds.
+This is one uninterrupted consolidated pass on the final product and native-test source.
+All nine recovery tests, the signed-in imported-video journey with sign-out, and the authentication screens pass.
+The new pagination assertion records three failed requests, then one successful explicit retry; the final older row becomes accessible.
+All six new history screenshots were inspected at 1206 x 2622.
+The three failure-state screenshots are preserved under `docs/screenshots/history-*.png`; all recovered states are in `.gnhf/evidence/phase3-final`.
+The final journey ends signed out on the sign-in screen.
+Log: `/tmp/spolysis-overnight-phase3-final.log`.
+Fixture and Metro logs: `/tmp/spolysis-overnight-phase3-fixture.log` and `/tmp/spolysis-overnight-phase3-metro.log`.
+TypeScript, ESLint, Prettier for HomeScreen, Python lint, fixture formatting, and diff whitespace checks pass.
+The viewer build passed during Metro startup.
+No API or pipeline implementation changed; the Python regression suite was not repeated.
+Service outages use isolated HTTP 503 responses, not device airplane mode or production services.
+
+### Earlier verification
+
 ```sh
 xcodebuild test -project /tmp/SpolysisOvernightUITests.xcodeproj -scheme SpolysisUITests -only-testing:SpolysisUITests -destination 'platform=iOS Simulator,id=858FB450-9823-4060-AADB-CDB3CBB58445' -derivedDataPath /tmp/spolysis-overnight-ui -resultBundlePath /tmp/spolysis-overnight-phase2-verified.xcresult CODE_SIGNING_ALLOWED=NO
 ```
@@ -73,9 +104,9 @@ xcodebuild test -project /tmp/SpolysisOvernightUITests.xcodeproj -scheme Spolysi
 
 Affected-flow result: six executions, zero failures in 165.658 seconds.
 Pending-job recovery, distinct-job selection, and the full signed-in journey each passed twice after the final history-refresh fix.
-The latest full-suite run also passed completed-result recovery, video recovery, motion and signed-link recovery, confirmation retry, and authentication smoke before that Home-only change.
+The phase 2 full-suite run also passed completed-result recovery, video recovery, motion and signed-link recovery, confirmation retry, and authentication smoke before that Home-only change.
 The confirmation test recorded one upload and two start attempts; the pending-history test recorded no upload and one start attempt.
-There is no claim of one uninterrupted eight-test pass on the final source.
+Phase 2 did not produce one uninterrupted eight-test pass on that iteration's final source; the phase 3 consolidated pass now covers those flows together.
 Final affected-flow attachments are `.gnhf/evidence/phase2-history-verified`.
 The pending and rejected screenshots under `docs/screenshots` come from the final repeated pass.
 The confirmation screenshot comes from the earlier successful confirmation flow; its progress-screen implementation is unchanged.
@@ -90,7 +121,7 @@ Its bundle is `/tmp/spolysis-overnight-phase1-final.xcresult`, log is `/tmp/spol
 Together these journeys exercise isolated authentication, history, real pipeline overlay and motion playback, 3D controls, stroke/hand selection, library import, native upload, sharing, profile, sign-out, and recovery.
 Production authentication and database writes are separate unverified claims.
 
-The following checks pass in phase 2:
+The following static checks pass in phase 3:
 
 ```sh
 npm --prefix app run typecheck
@@ -98,7 +129,7 @@ npm --prefix app run lint
 npm --prefix app run build:viewer
 .venv-test/bin/python -m ruff check api pipeline tests app/e2e/fixture.py
 .venv-test/bin/python -m ruff format --check app/e2e/fixture.py
-app/node_modules/.bin/prettier --check app/src/navigation/RecordingStack.tsx app/src/screens/UploadProgressScreen.tsx app/src/screens/HomeScreen.tsx
+app/node_modules/.bin/prettier --check app/src/screens/HomeScreen.tsx
 git diff --check
 ```
 
@@ -108,7 +139,8 @@ No API or pipeline implementation changed, so the Python regression suite was no
 ## Remaining ranked work and deferred decisions
 
 1. Transfer interruption, missing-upload recovery, failed jobs, recording guidance, and app termination during transfer.
-2. Session expiry/recovery, offline history, pagination errors, privacy expectations, and account boundaries.
+2. Session expiry/recovery, privacy expectations, account boundaries, and actual device-offline behavior across screens.
+   History service-failure and pagination recovery are implemented in phase 3.
 3. Actionable coaching and comparison interpretation, including the mismatch between highlighted joint and coaching priority in the inspected volley result.
 4. Dynamic Type, smaller screens, accessibility, and remaining empty/loading/error states.
 5. Consolidated native validation and honest handoff after those phases.
@@ -119,15 +151,16 @@ Physical camera behavior, Android runtime, distribution signing, external accoun
 
 Durable upload queues and abandoned-job cleanup require a coordinated lifecycle and retention decision.
 Recommendation for morning review: define explicit uploading, ready-to-start, and abandoned states with authenticated retry and retention before adding background transfers.
-This phase recovers confirmation using the existing contract and does not implement that larger change.
+Phase 2 recovers confirmation using the existing contract and does not implement that larger change.
 
 ## Checkpoint and cleanup
 
 Phase 1 checkpoint: `.gnhf/checkpoints/iteration-1-result-recovery.patch`.
 Phase 2 checkpoint: `.gnhf/checkpoints/iteration-2-upload-recovery.patch`.
+Phase 3 checkpoint: `.gnhf/checkpoints/iteration-3-history-recovery.patch`.
 Each has an ignored status sidecar in `.gnhf/runs/objective-act-as-a-d-19111c/`.
-Metro on 8081 and the fixture on 8877 are stopped; `lsof` reports no listeners on either port.
+Phase 3 Metro on 8081 and the fixture on 8877 are stopped.
 The test app was terminated and this worker-booted simulator was shut down, preserving its installation and data.
-The final repeated journey ended signed out.
+The consolidated journey ends signed out.
 All worker-started long-running processes are stopped.
 No useful-work exhaustion or production-release claim is made; continue the ranked backlog next iteration.

@@ -6,6 +6,7 @@ import json
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
 parser = argparse.ArgumentParser()
@@ -59,8 +60,10 @@ failures = {
     "video": False,
     "finishing": False,
     "confirm": False,
+    "history": False,
+    "history_page": False,
 }
-counters = {"uploads": 0, "confirmations": 0}
+counters = {"uploads": 0, "confirmations": 0, "history_pages": 0}
 initial_job = dict(jobs[0])
 
 
@@ -141,12 +144,23 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/auth/v1/user":
             self.respond(user)
         elif path == "/jobs":
+            page = int(parse_qs(urlsplit(self.path).query).get("page", ["1"])[0])
+            if page > 1:
+                counters["history_pages"] += 1
+            if failures["history"] or (page > 1 and failures["history_page"]):
+                self.respond({"detail": "Temporary history outage"}, 503)
+                return
             visible_jobs = [
                 {**job, "status": "processing"} if failures["finishing"] else job
                 for job in jobs
             ]
             self.respond(
-                {"jobs": visible_jobs, "total": len(jobs), "page": 1, "page_size": 20}
+                {
+                    "jobs": visible_jobs[(page - 1) * 20 : page * 20],
+                    "total": len(jobs),
+                    "page": page,
+                    "page_size": 20,
+                }
             )
         elif path.startswith("/jobs/"):
             job_id = path.split("/")[2]

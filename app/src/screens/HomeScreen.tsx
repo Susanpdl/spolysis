@@ -48,7 +48,11 @@ export default function HomeScreen() {
       <View style={styles.header}>
         <Text style={styles.title}>Your analyses</Text>
         <Text style={styles.muted}>
-          {query.data?.pages[0]?.total ?? 0} total
+          {query.data
+            ? `${query.data.pages[0].total} total`
+            : query.isLoading
+              ? "Loading..."
+              : "Total unavailable"}
         </Text>
       </View>
       <FlatList
@@ -61,11 +65,46 @@ export default function HomeScreen() {
           void query.refetch().finally(() => setRefreshing(false));
         }}
         onEndReached={() => {
-          if (query.hasNextPage && !query.isFetchingNextPage)
+          if (query.hasNextPage && !query.isFetching && !query.isError)
             void query.fetchNextPage();
         }}
+        ListHeaderComponent={
+          query.isRefetchError && jobs.length > 0 ? (
+            <View style={styles.notice}>
+              <Text style={styles.noticeTitle} accessibilityRole="alert">
+                Could not update analyses
+              </Text>
+              <Text style={styles.description}>
+                Showing previously loaded analyses. Their status may be out of
+                date. Check your connection and retry.
+              </Text>
+              <Button
+                title="Retry updating analyses"
+                variant="secondary"
+                loading={query.isRefetching}
+                onPress={() => void query.refetch()}
+              />
+            </View>
+          ) : null
+        }
         ListFooterComponent={
-          query.isFetchingNextPage ? (
+          query.isFetchNextPageError ? (
+            <View style={styles.notice}>
+              <Text style={styles.noticeTitle} accessibilityRole="alert">
+                Could not load more analyses
+              </Text>
+              <Text style={styles.description}>
+                Your loaded analyses are still here. Check your connection and
+                retry to see older recordings.
+              </Text>
+              <Button
+                title="Retry loading more"
+                variant="secondary"
+                loading={query.isFetchingNextPage}
+                onPress={() => void query.fetchNextPage()}
+              />
+            </View>
+          ) : query.isFetchingNextPage ? (
             <ActivityIndicator color={colors.primary} />
           ) : null
         }
@@ -86,6 +125,7 @@ export default function HomeScreen() {
                 {!query.isError && <GettingStarted />}
                 <Button
                   title={query.isError ? "Retry" : "Start your first analysis"}
+                  loading={query.isError && query.isFetching}
                   onPress={() => {
                     if (query.isError) void query.refetch();
                     else navigation.navigate("Record", { screen: "Capture" });
@@ -139,6 +179,16 @@ const styles = StyleSheet.create({
   empty: { flex: 1, justifyContent: "center", gap: 20, paddingBottom: 60 },
   emptyTitle: { fontSize: 26, fontWeight: "600", color: colors.text.primary },
   description: { fontSize: 16, lineHeight: 24, color: colors.text.secondary },
+  notice: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 16,
+    gap: 12,
+    marginBottom: 12,
+  },
+  noticeTitle: { color: colors.warning, fontSize: 17, fontWeight: "600" },
   row: {
     backgroundColor: colors.surface,
     borderRadius: 16,

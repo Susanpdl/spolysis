@@ -144,6 +144,81 @@ final class ResultRecoveryTests: XCTestCase {
   }
 
   @MainActor
+  func testHistoryInitialFailureDoesNotClaimEmptyAccount() throws {
+    continueAfterFailure = false
+    try fixturePost("/__test/jobs", body: [])
+    try failures(["history": true])
+    let app = try openHistory()
+    XCTAssertTrue(app.staticTexts["Could not load analyses"].waitForExistence(timeout: 20))
+    XCTAssertTrue(app.staticTexts["Total unavailable"].exists)
+    XCTAssertFalse(app.staticTexts["0 total"].exists)
+    XCTAssertFalse(app.buttons["Start your first analysis"].exists)
+    capture(app, name: "History initial load interrupted")
+    try failures(["history": false])
+    app.buttons["Retry"].tap()
+    XCTAssertTrue(app.buttons["Start your first analysis"].waitForExistence(timeout: 15))
+    XCTAssertTrue(app.staticTexts["0 total"].exists)
+    XCTAssertTrue(app.staticTexts["Choose your stroke"].exists)
+    capture(app, name: "History genuinely empty")
+  }
+
+  @MainActor
+  func testHistoryRefreshFailureKeepsSavedRowsAndRecovers() throws {
+    continueAfterFailure = false
+    try fixturePost("/__test/jobs", body: [
+      ["id": "refresh-processing", "tier": "premium", "status": "processing", "created_at": "2026-10-17T12:00:00Z"]
+    ])
+    let app = try openAnalysis(waitForResult: false)
+    app.buttons["Back to analyses"].tap()
+    let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Open analysis from'")).firstMatch
+    XCTAssertTrue(row.waitForExistence(timeout: 10))
+    try failures(["history": true])
+    // Wait for the processing-job poll, as when connection drops while waiting.
+    let stale = app.staticTexts["Could not update analyses"]
+    let visible = stale.waitForExistence(timeout: 20)
+    capture(app, name: "History refresh interrupted")
+    XCTAssertTrue(visible, "Cached rows must not silently look current after a refresh fails")
+    XCTAssertTrue(row.exists)
+    XCTAssertTrue(app.buttons["Retry updating analyses"].exists)
+    try failures(["history": false])
+    app.buttons["Retry updating analyses"].tap()
+    let recovered = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: stale)
+    wait(for: [recovered], timeout: 15)
+    XCTAssertTrue(row.exists)
+    capture(app, name: "History refresh recovered")
+  }
+
+  @MainActor
+  func testHistoryNextPageFailureOffersRetry() throws {
+    continueAfterFailure = false
+    let seeded = (0..<22).map { index -> [String: Any] in
+      ["id": "history-\(index)", "tier": "premium", "status": "completed",
+       "created_at": String(format: "2026-10-%02dT12:00:00Z", 28 - index)]
+    }
+    try fixturePost("/__test/jobs", body: seeded)
+    try failures(["history_page": true])
+    let app = try openAnalysis()
+    app.buttons["Analyses, tab, 1 of 3"].tap()
+    for _ in 0..<7 { app.swipeUp() }
+    let error = app.staticTexts["Could not load more analyses"]
+    let visible = error.waitForExistence(timeout: 20)
+    capture(app, name: "History next page interrupted")
+    XCTAssertTrue(visible, "An incomplete history must explain why the remaining analyses are absent")
+    XCTAssertTrue(app.buttons["Retry loading more"].exists)
+    let interrupted = try fixtureState()
+    XCTAssertEqual(interrupted["history_pages"] as? Int, 3, "Stop after the normal two query retries, rather than repeatedly fetching a failed page")
+    try failures(["history_page": false])
+    app.buttons["Retry loading more"].tap()
+    let last = app.buttons["Open analysis from 10/7/2026"]
+    if !last.waitForExistence(timeout: 3) { app.swipeUp() }
+    XCTAssertTrue(last.waitForExistence(timeout: 15))
+    XCTAssertFalse(error.exists)
+    let recovered = try fixtureState()
+    XCTAssertEqual(recovered["history_pages"] as? Int, 4)
+    capture(app, name: "History next page recovered")
+  }
+
+  @MainActor
   func testSwitchingPendingAnalysesShowsSelectedJob() throws {
     continueAfterFailure = false
     defer { try? fixturePost("/__test/reset") }
@@ -283,7 +358,7 @@ final class ResultRecoveryTests: XCTestCase {
   }
 
   @MainActor
-  private func openAnalysis(waitForResult: Bool = true) throws -> XCUIApplication {
+  private func openHistory() throws -> XCUIApplication {
     let app = XCUIApplication(bundleIdentifier: "com.spolysis.app")
     app.launch()
     let landing = app.staticTexts.matching(NSPredicate(format: "label IN %@", ["Spolysis", "Your analyses"])).firstMatch
@@ -306,6 +381,12 @@ final class ResultRecoveryTests: XCTestCase {
     } else if system.buttons["Not Now"].exists {
       system.buttons["Not Now"].tap()
     }
+    return app
+  }
+
+  @MainActor
+  private func openAnalysis(waitForResult: Bool = true) throws -> XCUIApplication {
+    let app = try openHistory()
     let analysis = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Open analysis from'")).firstMatch
     XCTAssertTrue(analysis.waitForExistence(timeout: 15))
     let ready = expectation(for: NSPredicate(format: "hittable == true"), evaluatedWith: analysis)

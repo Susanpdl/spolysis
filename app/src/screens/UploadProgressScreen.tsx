@@ -22,7 +22,14 @@ export default function UploadProgressScreen({
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const uploaded = useRef<string | null>(null);
-  const { job, result, jobError } = useJob(jobId);
+  const {
+    job,
+    result,
+    jobError,
+    resultError,
+    isFetchingResult,
+    refetchResult,
+  } = useJob(jobId);
   const queryClient = useQueryClient();
   useEffect(() => {
     if (route.params.jobId) return;
@@ -93,44 +100,62 @@ export default function UploadProgressScreen({
       navigation.replace("Result", { jobId: job.id });
   }, [job?.status, job?.id, result, navigation]);
   const failed = job?.status === "failed" || job?.status === "rejected";
+  const resultUnavailable =
+    job?.status === "completed" && !!resultError && !result;
   const message =
     error ??
-    (failed
-      ? (job.rejection_reason ??
-        job.error_message ??
-        "Analysis could not finish.")
-      : jobError
-        ? "Connection interrupted. We will keep checking."
-        : stage === "upload"
-          ? `Uploading video · ${Math.round(progress * 100)}%`
-          : stage === "confirm"
-            ? "Starting your analysis..."
-            : job?.status === "pending"
-              ? "Your analysis is queued."
-              : "Reconstructing your stroke in 3D...");
+    (resultUnavailable
+      ? "Your analysis is saved, but its result could not be downloaded. Check your connection and retry. You do not need to upload again."
+      : failed
+        ? (job.rejection_reason ??
+          job.error_message ??
+          "Analysis could not finish.")
+        : jobError
+          ? "Connection interrupted. We will keep checking."
+          : stage === "upload"
+            ? `Uploading video · ${Math.round(progress * 100)}%`
+            : stage === "confirm"
+              ? "Starting your analysis..."
+              : job?.status === "completed"
+                ? "Loading your completed analysis..."
+                : job?.status === "pending"
+                  ? "Your analysis is queued."
+                  : "Reconstructing your stroke in 3D...");
   return (
     <SafeAreaView style={styles.page}>
       <View style={styles.card}>
-        {!error && !failed && (
+        {!error && !failed && !resultUnavailable && (
           <ActivityIndicator size="large" color={colors.primary} />
         )}
         <Text style={styles.title}>
           {error
             ? "Upload interrupted"
-            : failed
-              ? "Try another recording"
-              : "Your stroke, in focus"}
+            : resultUnavailable
+              ? "Analysis ready, result unavailable"
+              : failed
+                ? "Try another recording"
+                : "Your stroke, in focus"}
         </Text>
         <Text style={styles.text}>{message}</Text>
         {stage === "upload" && !error && <ProgressBar progress={progress} />}
-        {!error && !failed && (
-          <Text style={styles.caption}>
-            We check the recording, reconstruct your movement and compare the
-            clearest swing with a reference. This can take several minutes.
-          </Text>
-        )}
+        {!error &&
+          !failed &&
+          !resultUnavailable &&
+          job?.status !== "completed" && (
+            <Text style={styles.caption}>
+              We check the recording, reconstruct your movement and compare the
+              clearest swing with a reference. This can take several minutes.
+            </Text>
+          )}
         {error && (
           <Button title="Retry" onPress={() => setAttempt((a) => a + 1)} />
+        )}
+        {resultUnavailable && (
+          <Button
+            title="Retry result"
+            loading={isFetchingResult}
+            onPress={() => void refetchResult()}
+          />
         )}
         {(failed || error) && (
           <Button

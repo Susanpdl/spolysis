@@ -53,6 +53,7 @@ result.update(
         "created_at": jobs[0]["created_at"],
     }
 )
+failures = {"result": False, "motion": False, "video": False, "finishing": False}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -65,8 +66,11 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(payload)
 
     def do_POST(self):
-        self.rfile.read(int(self.headers.get("Content-Length", 0)))
-        if self.path.startswith("/auth/v1/token"):
+        body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        if self.path == "/__test/failures":
+            failures.update(json.loads(body))
+            self.respond(failures)
+        elif self.path.startswith("/auth/v1/token"):
             self.respond(
                 {
                     "access_token": token,
@@ -114,14 +118,26 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/auth/v1/user":
             self.respond(user)
         elif path == "/jobs":
-            self.respond({"jobs": jobs, "total": len(jobs), "page": 1, "page_size": 20})
+            visible_jobs = [
+                {**job, "status": "processing"} if failures["finishing"] else job
+                for job in jobs
+            ]
+            self.respond(
+                {"jobs": visible_jobs, "total": len(jobs), "page": 1, "page_size": 20}
+            )
         elif path.startswith("/jobs/"):
             job_id = path.split("/")[2]
             if path.endswith("/result"):
+                if failures["result"]:
+                    self.respond({"detail": "Temporary result outage"}, 503)
+                    return
                 self.respond({**result, "job_id": job_id})
             else:
                 self.respond(next(j for j in jobs if j["id"] == job_id))
         elif path in {"/media/overlay.mp4", "/media/skeleton.json"}:
+            if failures["video" if path.endswith("mp4") else "motion"]:
+                self.respond({"detail": "Temporary media outage"}, 503)
+                return
             data = (args.media_dir / path.split("/")[-1]).read_bytes()
             start, end = 0, len(data) - 1
             partial = self.headers.get("Range", "")

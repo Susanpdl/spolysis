@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { RecordingScreenProps } from "@/navigation/types";
 import { VideoPlayer } from "@/components/VideoPlayer";
+import { Button } from "@/components/Button";
 import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import ThreeJSViewer, {
@@ -47,7 +48,8 @@ export default function ResultScreen({
   navigation,
 }: RecordingScreenProps<"Result">) {
   const { jobId } = route.params;
-  const { result, isLoadingJob, isLoadingResult, refetch } = useJob(jobId);
+  const { result, isLoadingJob, isLoadingResult, refetch, refetchResult } =
+    useJob(jobId);
   const reset = recordingStore((s) => s.reset);
 
   const [activeTab, setActiveTab] = useState<ResultTab>("video");
@@ -55,24 +57,60 @@ export default function ResultScreen({
     null,
   );
   const [skeletonLoading, setSkeletonLoading] = useState(false);
+  const [mediaAttempt, setMediaAttempt] = useState(0);
+  const [mediaRefreshing, setMediaRefreshing] = useState(false);
+  const [mediaRefreshError, setMediaRefreshError] = useState<string | null>(
+    null,
+  );
+
+  const retryMedia = async () => {
+    if (mediaRefreshing) return;
+    setMediaRefreshing(true);
+    setMediaRefreshError(null);
+    try {
+      const response = await refetchResult();
+      if (response.error) throw response.error;
+      // A refresh may return the same signed URL, so remount the failed player
+      // and retry the motion download even when the URL has not changed.
+      setMediaAttempt((attempt) => attempt + 1);
+    } catch {
+      setMediaRefreshError(
+        "Could not refresh the link. Check your connection and retry.",
+      );
+    } finally {
+      setMediaRefreshing(false);
+    }
+  };
 
   useEffect(() => {
+    setSkeletonFrames(null);
     if (!result?.skeleton_3d_url) return;
+    let alive = true;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
     setSkeletonLoading(true);
-    fetch(result.skeleton_3d_url)
+    fetch(result.skeleton_3d_url, { signal: controller.signal })
       .then((r) => {
         if (!r.ok) throw new Error("Could not download motion");
         return r.json();
       })
       .then((data) => {
-        setSkeletonFrames(parseSkeleton(data));
-        setSkeletonLoading(false);
+        const skeleton = parseSkeleton(data);
+        if (alive) setSkeletonFrames(skeleton);
       })
       .catch(() => {
-        setSkeletonFrames(null);
-        setSkeletonLoading(false);
+        if (alive) setSkeletonFrames(null);
+      })
+      .finally(() => {
+        clearTimeout(timeout);
+        if (alive) setSkeletonLoading(false);
       });
-  }, [result?.skeleton_3d_url]);
+    return () => {
+      alive = false;
+      clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [jobId, result?.skeleton_3d_url, mediaAttempt]);
 
   const handleDone = () => {
     reset();
@@ -236,8 +274,12 @@ export default function ResultScreen({
                     Corrected overlay
                   </Text>
                   <VideoPlayer
+                    key={`overlay:${mediaAttempt}:${result.overlay_video_url}`}
                     uri={result.overlay_video_url}
                     style={styles.videoOverlay}
+                    onRetry={() => void retryMedia()}
+                    retrying={mediaRefreshing}
+                    retryError={mediaRefreshError}
                   />
                 </View>
               )}
@@ -247,8 +289,12 @@ export default function ResultScreen({
                     Reference motion
                   </Text>
                   <VideoPlayer
+                    key={`reference:${mediaAttempt}:${result.reference_clip_url}`}
                     uri={result.reference_clip_url}
                     style={styles.videoReference}
+                    onRetry={() => void retryMedia()}
+                    retrying={mediaRefreshing}
+                    retryError={mediaRefreshError}
                   />
                 </View>
               )}
@@ -286,8 +332,20 @@ export default function ResultScreen({
                         { color: colors.text.muted },
                       ]}
                     >
-                      3D data is unavailable. Reload this analysis.
+                      3D motion could not load
                     </Text>
+                    <Text
+                      style={styles.recoveryText}
+                      accessibilityLiveRegion="polite"
+                    >
+                      {mediaRefreshError ??
+                        "Check your connection, then retry to refresh the motion link."}
+                    </Text>
+                    <Button
+                      title="Retry 3D view"
+                      loading={mediaRefreshing}
+                      onPress={() => void retryMedia()}
+                    />
                   </View>
                 )
               ) : (
@@ -295,8 +353,13 @@ export default function ResultScreen({
                   <Text
                     style={[typography.bodySmall, { color: colors.text.muted }]}
                   >
-                    3D data is unavailable. Reload this analysis.
+                    This analysis has no 3D motion attached.
                   </Text>
+                  <Button
+                    title="Refresh analysis"
+                    loading={mediaRefreshing}
+                    onPress={() => void retryMedia()}
+                  />
                 </View>
               )}
             </View>
@@ -416,6 +479,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: spacing.sm,
+    padding: spacing.md,
+  },
+  recoveryText: {
+    color: colors.text.secondary,
+    textAlign: "center",
+    lineHeight: 20,
   },
   recommendationCard: {
     backgroundColor: colors.surface,

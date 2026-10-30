@@ -28,11 +28,13 @@ export function useJob(jobId: string | null) {
     result: resultQuery.data,
     isLoadingJob: jobQuery.isLoading,
     isLoadingResult: resultQuery.isLoading,
+    isFetchingResult: resultQuery.isFetching,
     jobError: jobQuery.error,
     resultError: resultQuery.error,
+    refetchResult: resultQuery.refetch,
     refetch: async () => {
-      await jobQuery.refetch();
-      await resultQuery.refetch();
+      const job = await jobQuery.refetch();
+      if (job.data?.status === "completed") await resultQuery.refetch();
     },
   };
 }

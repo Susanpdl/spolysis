@@ -3,16 +3,22 @@
 These tests drive the installed iOS app through XCTest.
 `SmokeTests` checks the welcome, sign-up, and sign-in screens.
 `SignedInTests` uses an isolated local HTTP fixture and actual pipeline media to exercise history, result playback, the 3D viewer, recording setup, library import, native upload, file sharing, and sign-out.
+`ResultRecoveryTests` checks completed-result download failures, video failures, motion failures, and a failed signed-link refresh followed by successful recovery.
 Fixture authentication is not production authentication and never enters the app source.
 
 ## Prepare the test project
 
 Build and install the native simulator app first.
-The project generator uses the `xcodeproj` Ruby gem distributed with CocoaPods.
+The project generator uses the `xcodeproj` Ruby gem, which may already be installed or distributed with CocoaPods.
 
 ```sh
-GEM_HOME="$(brew --prefix cocoapods)/libexec" ruby app/e2e/create-project.rb
+ruby app/e2e/create-project.rb
 ```
+
+If Ruby cannot load `xcodeproj`, locate the installed CocoaPods gem directory and set `GEM_HOME` for this command.
+Do not assume a previous Homebrew installation path still exists.
+The installed compatible native development shell can be reused with Metro serving this checkout.
+An app without an embedded JavaScript bundle needs Metro running before launch.
 
 ## Authentication screens
 
@@ -36,7 +42,8 @@ The fixture substitutes local media URLs into that metadata.
 Add a short tennis video to the simulator's photo library before running the import test.
 Use a dedicated simulator library with that video as its first video asset.
 The test selects its thumbnail by accessibility label and taps its center because Photos does not expose a usable accessibility hit point for the image.
-The first history interaction uses a 150 ms press to avoid dropped instantaneous XCTest taps during debug startup.
+Navigation uses ordinary XCTest taps; 150 ms long presses were dropped on the current iOS 26.5 simulator.
+The history interaction waits for its row to become hittable before tapping.
 The fresh-install flow dismisses iOS's password-save dialog and grants the test app photo-library access through the native permission dialog.
 
 ```sh
@@ -54,6 +61,9 @@ npm start -- --clear
 ```
 
 Run the same XCTest command with `-only-testing:SpolysisUITests/SignedInTests`.
+Run `-only-testing:SpolysisUITests/ResultRecoveryTests` for the failure and recovery checks.
+These checks toggle outages through the loopback fixture's `/__test/failures` endpoint and restore them after each test.
+Use `-only-testing:SpolysisUITests` for a consolidated pass: recovery tests, the signed-in journey with sign-out, then the authentication screens.
 Use a fresh result bundle path when saving screenshots and test evidence.
 A clean test build avoids stale XCTest discovery after test source changes.
 Stop the fixture and restart Metro with normal configuration afterward.

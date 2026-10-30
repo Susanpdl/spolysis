@@ -1,0 +1,9 @@
+# Local CPU checks; GPU deployment dependencies remain in pipeline/requirements.txt.
+-r api/requirements.txt
+numpy==1.26.4
+scipy==1.13.1
+opencv-python-headless==4.10.0.84
+dtaidistance==2.3.12
+torch==2.1.0
+pytest==8.4.2
+ruff==0.14.3

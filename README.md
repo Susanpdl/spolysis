@@ -161,15 +161,24 @@ See [Pipeline setup](pipeline/README.md) for model and data details.
 
 ## Checks
 
+For isolated unattended runs, see [Overnight work with GNHF](docs/overnight.md).
+
+For local CPU checks, install Python 3.11 and FFmpeg, then create a separate test environment:
+
+```sh
+python3.11 -m venv .venv-test
+.venv-test/bin/python -m pip install -r requirements-dev.txt
+```
+
 ```sh
 npm --prefix app run build:viewer
 npm --prefix app run typecheck
 npm --prefix app run lint
-python -m pytest -q
-python -m ruff check api pipeline tests
+.venv-test/bin/python -m pytest -q
+.venv-test/bin/python -m ruff check api pipeline tests
 ```
 
-Python tests require the API dependencies plus `pytest`, NumPy, SciPy, OpenCV, and dtaidistance.
+The CPU test dependencies are listed in `requirements-dev.txt`; GPU deployment dependencies remain in `pipeline/requirements.txt`.
 Geometry and pipeline integration tests use synthetic articulated motion and temporary references; they do not require downloaded datasets or model weights.
 Those tests validate implementation contracts, not reconstruction accuracy on tennis footage.
 Native simulator test source and the isolated UI fixture server are in `app/e2e`.

@@ -1,6 +1,13 @@
 import React, { useEffect, useRef, useState } from "react";
-import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  ActivityIndicator,
+  ScrollView,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useIsFocused } from "@react-navigation/native";
 import { useQueryClient } from "@tanstack/react-query";
 import { RecordingScreenProps } from "@/navigation/types";
 import { ProgressBar } from "@/components/ProgressBar";
@@ -18,6 +25,8 @@ export default function UploadProgressScreen({
   const [stage, setStage] = useState<"upload" | "confirm" | "analysis">(
     route.params.jobId ? "analysis" : "upload",
   );
+  const focused = useIsFocused();
+  const [starting, setStarting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -29,6 +38,7 @@ export default function UploadProgressScreen({
     resultError,
     isFetchingResult,
     refetchResult,
+    refetch,
   } = useJob(jobId);
   const queryClient = useQueryClient();
   useEffect(() => {
@@ -96,9 +106,29 @@ export default function UploadProgressScreen({
     };
   }, [attempt, route.params, queryClient]);
   useEffect(() => {
-    if (job?.status === "completed" && result)
+    if (focused && job?.status === "completed" && result)
       navigation.replace("Result", { jobId: job.id });
-  }, [job?.status, job?.id, result, navigation]);
+  }, [focused, job?.status, job?.id, result, navigation]);
+  const retryStart = async () => {
+    if (!jobId || starting) return;
+    setStarting(true);
+    setError(null);
+    try {
+      await api.uploads.confirm(jobId);
+      await refetch();
+      void queryClient.invalidateQueries({ queryKey: ["jobs"] });
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Could not start analysis. Please retry.",
+      );
+    } finally {
+      setStarting(false);
+    }
+  };
+  const confirmationError = !!error && stage === "confirm";
+  const canRetryStart = !!route.params.jobId && job?.status === "pending";
   const failed = job?.status === "failed" || job?.status === "rejected";
   const resultUnavailable =
     job?.status === "completed" && !!resultError && !result;
@@ -119,59 +149,92 @@ export default function UploadProgressScreen({
               : job?.status === "completed"
                 ? "Loading your completed analysis..."
                 : job?.status === "pending"
-                  ? "Your analysis is queued."
+                  ? "Your analysis has not started yet."
                   : "Reconstructing your stroke in 3D...");
   return (
     <SafeAreaView style={styles.page}>
-      <View style={styles.card}>
-        {!error && !failed && !resultUnavailable && (
-          <ActivityIndicator size="large" color={colors.primary} />
-        )}
-        <Text style={styles.title}>
-          {error
-            ? "Upload interrupted"
-            : resultUnavailable
-              ? "Analysis ready, result unavailable"
-              : failed
-                ? "Try another recording"
-                : "Your stroke, in focus"}
-        </Text>
-        <Text style={styles.text}>{message}</Text>
-        {stage === "upload" && !error && <ProgressBar progress={progress} />}
-        {!error &&
-          !failed &&
-          !resultUnavailable &&
-          job?.status !== "completed" && (
-            <Text style={styles.caption}>
-              We check the recording, reconstruct your movement and compare the
-              clearest swing with a reference. This can take several minutes.
+      <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.card}>
+          {!error && !failed && !resultUnavailable && (
+            <ActivityIndicator size="large" color={colors.primary} />
+          )}
+          <Text style={styles.title}>
+            {error
+              ? confirmationError
+                ? "Video uploaded, analysis not started"
+                : canRetryStart
+                  ? "Could not start analysis"
+                  : "Upload interrupted"
+              : resultUnavailable
+                ? "Analysis ready, result unavailable"
+                : failed
+                  ? "Try another recording"
+                  : "Your stroke, in focus"}
+          </Text>
+          <Text style={styles.text}>{message}</Text>
+          {stage === "upload" && !error && <ProgressBar progress={progress} />}
+          {!error &&
+            !failed &&
+            !resultUnavailable &&
+            job?.status !== "completed" && (
+              <Text style={styles.caption}>
+                We check the recording, reconstruct your movement and compare
+                the clearest swing with a reference. This can take several
+                minutes.
+              </Text>
+            )}
+          {confirmationError && (
+            <Text style={styles.text}>
+              Your video was uploaded. Retry starting the analysis without
+              uploading it again.
             </Text>
           )}
-        {error && (
-          <Button title="Retry" onPress={() => setAttempt((a) => a + 1)} />
-        )}
-        {resultUnavailable && (
-          <Button
-            title="Retry result"
-            loading={isFetchingResult}
-            onPress={() => void refetchResult()}
-          />
-        )}
-        {(failed || error) && (
-          <Button
-            title="Choose another video"
-            variant="secondary"
-            onPress={() => navigation.replace("Capture")}
-          />
-        )}
-        {stage === "analysis" && !error && !failed && (
-          <Button
-            title="Back to analyses"
-            variant="secondary"
-            onPress={() => navigation.getParent()?.navigate("Home")}
-          />
-        )}
-      </View>
+          {error && !canRetryStart && (
+            <Button
+              title={
+                confirmationError ? "Start analysis again" : "Retry upload"
+              }
+              onPress={() => setAttempt((a) => a + 1)}
+            />
+          )}
+          {canRetryStart && (
+            <>
+              {!error && (
+                <Text style={styles.caption}>
+                  If your upload finished, retry starting this analysis. We will
+                  check the saved video first.
+                </Text>
+              )}
+              <Button
+                title="Retry starting analysis"
+                loading={starting}
+                onPress={() => void retryStart()}
+              />
+            </>
+          )}
+          {resultUnavailable && (
+            <Button
+              title="Retry result"
+              loading={isFetchingResult}
+              onPress={() => void refetchResult()}
+            />
+          )}
+          {(failed || error) && (
+            <Button
+              title="Choose another video"
+              variant="secondary"
+              onPress={() => navigation.replace("Capture")}
+            />
+          )}
+          {stage === "analysis" && !error && !failed && (
+            <Button
+              title="Back to analyses"
+              variant="secondary"
+              onPress={() => navigation.getParent()?.navigate("Home")}
+            />
+          )}
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -179,6 +242,9 @@ const styles = StyleSheet.create({
   page: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  content: {
+    flexGrow: 1,
     justifyContent: "center",
     padding: 24,
   },

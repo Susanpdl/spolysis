@@ -11,10 +11,15 @@ export function RecordingStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Capture" component={RecordScreen} />
-      <Stack.Screen name="UploadProgress" component={UploadProgressScreen} />
+      <Stack.Screen
+        name="UploadProgress"
+        component={UploadProgressScreen}
+        getId={({ params }) => params.jobId ?? params.videoUri}
+      />
       <Stack.Screen
         name="Result"
         component={ResultScreen}
+        getId={({ params }) => params.jobId}
         options={{ gestureEnabled: false }}
       />
     </Stack.Navigator>

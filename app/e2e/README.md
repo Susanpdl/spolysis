@@ -3,7 +3,7 @@
 These tests drive the installed iOS app through XCTest.
 `SmokeTests` checks the welcome, sign-up, and sign-in screens.
 `SignedInTests` uses an isolated local HTTP fixture and actual pipeline media to exercise history, result playback, the 3D viewer, recording setup, library import, native upload, file sharing, and sign-out.
-`ResultRecoveryTests` checks completed-result download failures, video failures, motion failures, and a failed signed-link refresh followed by successful recovery.
+`ResultRecoveryTests` checks result and media failures, signed-link refresh recovery, switching between unfinished analyses, pending-job restart from history, and confirmation retry without uploading twice.
 Fixture authentication is not production authentication and never enters the app source.
 
 ## Prepare the test project
@@ -62,7 +62,11 @@ npm start -- --clear
 
 Run the same XCTest command with `-only-testing:SpolysisUITests/SignedInTests`.
 Run `-only-testing:SpolysisUITests/ResultRecoveryTests` for the failure and recovery checks.
-These checks toggle outages through the loopback fixture's `/__test/failures` endpoint and restore them after each test.
+These checks toggle outages through the loopback fixture's `/__test/failures` endpoint.
+Recovery test setup resets jobs, failures, and transfer counters through `/__test/reset` before each test, including after a failed assertion.
+`/__test/jobs` seeds distinct statuses, and `/__test/state` supplies transfer counters for the confirmation retry assertion.
+These unauthenticated controls are confined to the loopback fixture.
+The sign-in helper waits for the delayed native password-save prompt before opening history.
 Use `-only-testing:SpolysisUITests` for a consolidated pass: recovery tests, the signed-in journey with sign-out, then the authentication screens.
 Use a fresh result bundle path when saving screenshots and test evidence.
 A clean test build avoids stale XCTest discovery after test source changes.

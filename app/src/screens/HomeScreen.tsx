@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -22,6 +22,7 @@ import type { MainTabParams } from "@/navigation/types";
 type Nav = BottomTabNavigationProp<MainTabParams>;
 export default function HomeScreen() {
   const navigation = useNavigation<Nav>();
+  const [refreshing, setRefreshing] = useState(false);
   const userId = authStore((s) => s.user?.id);
   const query = useInfiniteQuery({
     queryKey: ["jobs", userId],
@@ -54,8 +55,11 @@ export default function HomeScreen() {
         data={jobs}
         keyExtractor={(job) => job.id}
         contentContainerStyle={styles.list}
-        refreshing={query.isRefetching}
-        onRefresh={() => void query.refetch()}
+        refreshing={refreshing}
+        onRefresh={() => {
+          setRefreshing(true);
+          void query.refetch().finally(() => setRefreshing(false));
+        }}
         onEndReached={() => {
           if (query.hasNextPage && !query.isFetchingNextPage)
             void query.fetchNextPage();
@@ -72,9 +76,7 @@ export default function HomeScreen() {
             ) : (
               <>
                 <Text style={styles.emptyTitle}>
-                  {query.isError
-                    ? "Could not load analyses"
-                    : "Get started"}
+                  {query.isError ? "Could not load analyses" : "Get started"}
                 </Text>
                 <Text style={styles.description}>
                   {query.isError

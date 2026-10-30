@@ -40,7 +40,8 @@ final class SignedInTests: XCTestCase {
     app.launch()
     let landing = app.staticTexts.matching(NSPredicate(format: "label IN %@", ["Spolysis", "Your analyses"])).firstMatch
     XCTAssertTrue(landing.waitForExistence(timeout: 45))
-    if app.buttons["Sign in"].exists {
+    let signingIn = app.buttons["Sign in"].exists
+    if signingIn {
       app.buttons["Sign in"].tap()
       let email = app.textFields["you@example.com"]
       XCTAssertTrue(email.waitForExistence(timeout: 10))
@@ -52,10 +53,10 @@ final class SignedInTests: XCTestCase {
     }
     XCTAssertTrue(app.staticTexts["Your analyses"].waitForExistence(timeout: 30))
     let system = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-    if system.buttons["Not Now"].waitForExistence(timeout: 3) {
-      system.buttons["Not Now"].tap()
-    } else if app.buttons["Not Now"].exists {
+    if app.buttons["Not Now"].waitForExistence(timeout: signingIn ? 10 : 1) {
       app.buttons["Not Now"].tap()
+    } else if system.buttons["Not Now"].exists {
+      system.buttons["Not Now"].tap()
     }
     let analysis = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Open analysis from'")).firstMatch
     XCTAssertTrue(analysis.waitForExistence(timeout: 15))
@@ -136,6 +137,97 @@ final class SignedInTests: XCTestCase {
 
 // Recovery checks use only the loopback fixture, never production services.
 final class ResultRecoveryTests: XCTestCase {
+  override func setUpWithError() throws {
+    try super.setUpWithError()
+    // XCTest may abort before Swift defer executes after an assertion failure.
+    try fixturePost("/__test/reset")
+  }
+
+  @MainActor
+  func testSwitchingPendingAnalysesShowsSelectedJob() throws {
+    continueAfterFailure = false
+    defer { try? fixturePost("/__test/reset") }
+    try fixturePost("/__test/jobs", body: [
+      ["id": "pending-one", "tier": "premium", "status": "processing", "created_at": "2026-10-17T12:00:00Z"],
+      ["id": "rejected-two", "tier": "premium", "status": "rejected", "created_at": "2026-10-16T12:00:00Z", "rejection_reason": "Your feet are out of frame. Record with your full body visible."]
+    ])
+    let app = try openAnalysis(waitForResult: false)
+    XCTAssertTrue(app.staticTexts["Reconstructing your stroke in 3D..."].waitForExistence(timeout: 15))
+    app.buttons["Back to analyses"].tap()
+    let other = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Open analysis from'")).element(boundBy: 1)
+    XCTAssertTrue(other.waitForExistence(timeout: 10))
+    other.tap()
+    let rejected = app.staticTexts["Your feet are out of frame. Record with your full body visible."]
+    let visible = rejected.waitForExistence(timeout: 15)
+    capture(app, name: "Second analysis selected")
+    XCTAssertTrue(visible, "The selected rejected analysis must not keep showing the previous processing job")
+    XCTAssertTrue(app.buttons["Choose another video"].exists)
+    // A different analysis finishing in the background must not replace this screen.
+    try fixturePost("/__test/jobs", body: [
+      ["id": "pending-one", "tier": "premium", "status": "completed", "created_at": "2026-10-17T12:00:00Z"],
+      ["id": "rejected-two", "tier": "premium", "status": "rejected", "created_at": "2026-10-16T12:00:00Z", "rejection_reason": "Your feet are out of frame. Record with your full body visible."]
+    ])
+    app.buttons["Choose another video"].tap()
+    XCTAssertTrue(app.staticTexts["Your next better stroke"].waitForExistence(timeout: 10))
+  }
+
+  @MainActor
+  func testPendingUploadCanResumeFromHistory() throws {
+    continueAfterFailure = false
+    defer { try? fixturePost("/__test/reset") }
+    try fixturePost("/__test/jobs", body: [
+      ["id": "uploaded-pending", "tier": "premium", "status": "pending", "created_at": "2026-10-17T12:00:00Z"]
+    ])
+    let app = try openAnalysis(waitForResult: false)
+    XCTAssertTrue(app.staticTexts["Your analysis has not started yet."].waitForExistence(timeout: 15))
+    capture(app, name: "Pending upload reopened from history")
+    XCTAssertTrue(app.buttons["Retry starting analysis"].exists)
+    app.buttons["Retry starting analysis"].tap()
+    XCTAssertTrue(app.staticTexts["CORRECTED OVERLAY"].waitForExistence(timeout: 30))
+    let state = try fixtureState()
+    XCTAssertEqual(state["uploads"] as? Int, 0)
+    XCTAssertEqual(state["confirmations"] as? Int, 1)
+  }
+
+  @MainActor
+  func testUploadConfirmationRetryKeepsUploadedVideo() throws {
+    continueAfterFailure = false
+    try failures(["confirm": true])
+    defer { try? fixturePost("/__test/reset") }
+    let app = try openAnalysis()
+    app.buttons["Record, tab, 2 of 3"].tap()
+    // Return directly to capture from this existing result.
+    let edge = app.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.82))
+    let top = app.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.20))
+    edge.press(forDuration: 0.05, thenDragTo: top)
+    edge.press(forDuration: 0.05, thenDragTo: top)
+    app.buttons["Record another"].tap()
+    if !app.buttons["Choose a video"].isHittable { app.swipeUp() }
+    app.buttons["Choose a video"].tap()
+    let system = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+    if app.buttons["Allow Full Access"].waitForExistence(timeout: 2) {
+      app.buttons["Allow Full Access"].tap()
+    } else if system.buttons["Allow Full Access"].exists {
+      system.buttons["Allow Full Access"].tap()
+    }
+    let video = app.images.matching(NSPredicate(format: "label CONTAINS[c] 'Video'")).firstMatch
+    XCTAssertTrue(video.waitForExistence(timeout: 10))
+    video.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+    if app.buttons["Choose"].waitForExistence(timeout: 3) { app.buttons["Choose"].tap() }
+    let uploaded = app.staticTexts["Video uploaded, analysis not started"]
+    let visible = uploaded.waitForExistence(timeout: 20)
+    capture(app, name: "Upload confirmation interrupted")
+    XCTAssertTrue(visible)
+    XCTAssertTrue(app.staticTexts["Your video was uploaded. Retry starting the analysis without uploading it again."].exists)
+    try failures(["confirm": false])
+    app.buttons["Start analysis again"].tap()
+    XCTAssertTrue(app.staticTexts["CORRECTED OVERLAY"].waitForExistence(timeout: 30))
+    capture(app, name: "Upload confirmation recovered")
+    let state = try fixtureState()
+    XCTAssertEqual(state["uploads"] as? Int, 1)
+    XCTAssertEqual(state["confirmations"] as? Int, 2)
+  }
+
   @MainActor
   func testCompletedAnalysisCanRetryResult() throws {
     continueAfterFailure = false
@@ -196,7 +288,8 @@ final class ResultRecoveryTests: XCTestCase {
     app.launch()
     let landing = app.staticTexts.matching(NSPredicate(format: "label IN %@", ["Spolysis", "Your analyses"])).firstMatch
     XCTAssertTrue(landing.waitForExistence(timeout: 45))
-    if app.buttons["Sign in"].exists {
+    let signingIn = app.buttons["Sign in"].exists
+    if signingIn {
       app.buttons["Sign in"].tap()
       let email = app.textFields["you@example.com"]
       XCTAssertTrue(email.waitForExistence(timeout: 10))
@@ -208,10 +301,10 @@ final class ResultRecoveryTests: XCTestCase {
     }
     XCTAssertTrue(app.staticTexts["Your analyses"].waitForExistence(timeout: 30))
     let system = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-    if system.buttons["Not Now"].waitForExistence(timeout: 2) {
-      system.buttons["Not Now"].tap()
-    } else if app.buttons["Not Now"].exists {
+    if app.buttons["Not Now"].waitForExistence(timeout: signingIn ? 10 : 1) {
       app.buttons["Not Now"].tap()
+    } else if system.buttons["Not Now"].exists {
+      system.buttons["Not Now"].tap()
     }
     let analysis = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Open analysis from'")).firstMatch
     XCTAssertTrue(analysis.waitForExistence(timeout: 15))
@@ -222,6 +315,31 @@ final class ResultRecoveryTests: XCTestCase {
       XCTAssertTrue(app.staticTexts["CORRECTED OVERLAY"].waitForExistence(timeout: 20))
     }
     return app
+  }
+
+  private func fixturePost(_ path: String, body: Any = [:]) throws {
+    var request = URLRequest(url: URL(string: "http://localhost:8877" + path)!)
+    request.httpMethod = "POST"
+    request.httpBody = try JSONSerialization.data(withJSONObject: body)
+    let done = expectation(description: "Configure isolated fixture")
+    URLSession.shared.dataTask(with: request) { _, response, error in
+      XCTAssertNil(error)
+      XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+      done.fulfill()
+    }.resume()
+    wait(for: [done], timeout: 5)
+  }
+
+  private func fixtureState() throws -> [String: Any] {
+    let done = expectation(description: "Read isolated fixture counters")
+    var state: [String: Any] = [:]
+    URLSession.shared.dataTask(with: URL(string: "http://localhost:8877/__test/state")!) { data, _, error in
+      XCTAssertNil(error)
+      if let data = data { state = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:] }
+      done.fulfill()
+    }.resume()
+    wait(for: [done], timeout: 5)
+    return state
   }
 
   private func failures(_ values: [String: Bool]) throws {

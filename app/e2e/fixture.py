@@ -53,7 +53,15 @@ result.update(
         "created_at": jobs[0]["created_at"],
     }
 )
-failures = {"result": False, "motion": False, "video": False, "finishing": False}
+failures = {
+    "result": False,
+    "motion": False,
+    "video": False,
+    "finishing": False,
+    "confirm": False,
+}
+counters = {"uploads": 0, "confirmations": 0}
+initial_job = dict(jobs[0])
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -70,6 +78,14 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/__test/failures":
             failures.update(json.loads(body))
             self.respond(failures)
+        elif self.path == "/__test/jobs":
+            jobs[:] = json.loads(body)
+            self.respond({})
+        elif self.path == "/__test/reset":
+            jobs[:] = [dict(initial_job)]
+            failures.update(dict.fromkeys(failures, False))
+            counters.update(dict.fromkeys(counters, 0))
+            self.respond({})
         elif self.path.startswith("/auth/v1/token"):
             self.respond(
                 {
@@ -100,6 +116,10 @@ class Handler(BaseHTTPRequestHandler):
                 }
             )
         elif self.path.endswith("/confirm"):
+            counters["confirmations"] += 1
+            if failures["confirm"]:
+                self.respond({"detail": "Temporary confirmation outage"}, 503)
+                return
             job_id = self.path.split("/")[2]
             next(job for job in jobs if job["id"] == job_id)["status"] = "completed"
             self.respond({"status": "processing"})
@@ -107,6 +127,7 @@ class Handler(BaseHTTPRequestHandler):
             self.respond({"detail": "Unknown test endpoint"}, 404)
 
     def do_PUT(self):
+        counters["uploads"] += 1
         remaining = int(self.headers.get("Content-Length", 0))
         while remaining:
             chunk = self.rfile.read(min(remaining, 65536))
@@ -115,7 +136,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = self.path.split("?")[0]
-        if path == "/auth/v1/user":
+        if path == "/__test/state":
+            self.respond({"jobs": jobs, **counters})
+        elif path == "/auth/v1/user":
             self.respond(user)
         elif path == "/jobs":
             visible_jobs = [

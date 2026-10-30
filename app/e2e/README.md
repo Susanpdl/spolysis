@@ -6,6 +6,8 @@ These tests drive the installed iOS app through XCTest.
 `ResultRecoveryTests` checks result and media failures, signed-link refresh recovery, switching between unfinished analyses, pending-job restart from history, and confirmation retry without uploading twice.
 It also covers failed history polls with cached rows, unavailable initial history, genuinely empty history, and second-page recovery.
 Upload checks cover a failed native transfer, a missing or invalid saved video, and start-only retry after a service outage.
+Session checks cover sign-out service failure and automatic removal of an expired session whose refresh token was revoked.
+Both sign back in without restarting JavaScript and verify that private history from the previous session is absent during a history outage.
 A missing video retries the actual transfer when its local clip remains available; a history-only job returns to video selection.
 The page failure check asserts that automatic requests stop after the normal query retry budget and that explicit retry retrieves the remaining rows.
 Fixture authentication is not production authentication and never enters the app source.
@@ -74,6 +76,9 @@ Transfer recovery waits for the native video-ready state before capturing its re
 `/__test/state` supplies upload, confirmation, and additional-page request counters for recovery assertions.
 The `history` and `history_page` failure switches independently interrupt the list and additional pages.
 The `upload` switch returns a transfer failure; `missing_upload` returns the confirmation endpoint's missing-or-invalid response.
+The `logout` switch returns an auth-service 503.
+The `short_session` switch issues a one-second access token; `refresh_rejected` rejects automatic token refresh with a non-retryable revoked-token response.
+The real auth SDK performs expiry and session removal; these controls do not simulate production account revocation or device airplane mode.
 These simulate HTTP failures and do not prove recovery from device airplane mode or process termination.
 These unauthenticated controls are confined to the loopback fixture.
 The sign-in helper waits for the delayed native password-save prompt before opening history.

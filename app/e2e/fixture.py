@@ -29,13 +29,16 @@ def encoded(value):
     return base64.urlsafe_b64encode(json.dumps(value).encode()).decode().rstrip("=")
 
 
-token = ".".join(
-    [
-        encoded({"alg": "HS256", "typ": "JWT"}),
-        encoded({"sub": user["id"], "exp": int(time.time()) + 86400}),
-        "test-signature",
-    ]
-)
+def access_token(expires_in):
+    return ".".join(
+        [
+            encoded({"alg": "HS256", "typ": "JWT"}),
+            encoded({"sub": user["id"], "exp": int(time.time()) + expires_in}),
+            "test-signature",
+        ]
+    )
+
+
 jobs = [
     {
         "id": "b1111111-1111-4111-8111-111111111111",
@@ -64,8 +67,11 @@ failures = {
     "history_page": False,
     "upload": False,
     "missing_upload": False,
+    "logout": False,
+    "short_session": False,
+    "refresh_rejected": False,
 }
-counters = {"uploads": 0, "confirmations": 0, "history_pages": 0}
+counters = {"uploads": 0, "confirmations": 0, "history_pages": 0, "refreshes": 0}
 initial_job = dict(jobs[0])
 
 
@@ -92,17 +98,32 @@ class Handler(BaseHTTPRequestHandler):
             counters.update(dict.fromkeys(counters, 0))
             self.respond({})
         elif self.path.startswith("/auth/v1/token"):
+            if "grant_type=refresh_token" in self.path:
+                counters["refreshes"] += 1
+                if failures["refresh_rejected"]:
+                    self.respond(
+                        {
+                            "code": "refresh_token_not_found",
+                            "message": "Refresh token revoked",
+                        },
+                        400,
+                    )
+                    return
+            expires_in = 1 if failures["short_session"] else 86400
             self.respond(
                 {
-                    "access_token": token,
+                    "access_token": access_token(expires_in),
                     "refresh_token": "fixture-refresh",
                     "token_type": "bearer",
-                    "expires_in": 86400,
+                    "expires_in": expires_in,
                     "user": user,
                 }
             )
         elif self.path.startswith("/auth/v1/logout"):
-            self.respond({})
+            if failures["logout"]:
+                self.respond({"msg": "Temporary sign-out service outage"}, 503)
+            else:
+                self.respond({})
         elif self.path.startswith("/internal/jobs/"):
             print("Workflow callback:", self.path.rsplit("/", 1)[-1], flush=True)
             self.respond({"status": "ok"})

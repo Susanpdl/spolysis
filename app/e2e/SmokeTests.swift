@@ -151,6 +151,61 @@ final class ResultRecoveryTests: XCTestCase {
   }
 
   @MainActor
+  func testSignOutServiceFailureClearsPrivateSessionData() throws {
+    continueAfterFailure = false
+    let app = try openHistory()
+    XCTAssertTrue(app.buttons["Open analysis from 10/17/2026"].waitForExistence(timeout: 15))
+    try failures(["logout": true])
+    app.buttons["Profile, tab, 3 of 3"].tap()
+    XCTAssertTrue(app.buttons["Sign out"].waitForExistence(timeout: 10))
+    app.buttons["Sign out"].tap()
+    app.alerts.buttons["Sign out"].tap()
+    XCTAssertTrue(app.buttons["Get Started"].waitForExistence(timeout: 15))
+    let falseFailure = app.alerts["Could not sign out"].waitForExistence(timeout: 2)
+    let localNotice = app.alerts["Signed out on this device"].exists
+    capture(app, name: "Sign out during auth service outage")
+    if falseFailure { app.alerts.buttons["OK"].tap() }
+    if localNotice { app.alerts.buttons["OK"].tap() }
+
+    // Re-enter the same account without restarting JS, so cached private rows
+    // cannot be concealed by a fresh runtime. The service is now unavailable.
+    try failures(["history": true, "logout": false])
+    signIn(app)
+    XCTAssertTrue(app.staticTexts["Your analyses"].waitForExistence(timeout: 15))
+    let unavailable = app.staticTexts["Could not load analyses"].waitForExistence(timeout: 20)
+    capture(app, name: "New session during history outage")
+    XCTAssertTrue(unavailable, "Signing out must clear private rows even when remote revocation fails")
+    XCTAssertFalse(app.buttons["Open analysis from 10/17/2026"].exists)
+    XCTAssertFalse(falseFailure, "Do not report sign-out failure after the SDK has removed the local session")
+    XCTAssertTrue(localNotice, "Explain that remote session revocation could not be confirmed")
+  }
+
+  @MainActor
+  func testRevokedSessionClearsPrivateHistoryBeforeSigningInAgain() throws {
+    continueAfterFailure = false
+    let app = try openHistory()
+    app.buttons["Profile, tab, 3 of 3"].tap()
+    XCTAssertTrue(app.buttons["Sign out"].waitForExistence(timeout: 10))
+    app.buttons["Sign out"].tap()
+    app.alerts.buttons["Sign out"].tap()
+    XCTAssertTrue(app.buttons["Get Started"].waitForExistence(timeout: 15))
+    try failures(["short_session": true])
+    signIn(app)
+    XCTAssertTrue(app.buttons["Open analysis from 10/17/2026"].waitForExistence(timeout: 15))
+    try failures(["refresh_rejected": true])
+    // The real auth SDK handles the next automatic refresh and emits SIGNED_OUT.
+    XCTAssertTrue(app.buttons["Get Started"].waitForExistence(timeout: 45))
+    XCTAssertGreaterThan(try fixtureState()["refreshes"] as? Int ?? 0, 0)
+    capture(app, name: "Revoked session returns to sign in")
+    try failures(["short_session": false, "refresh_rejected": false, "history": true])
+    signIn(app)
+    let unavailable = app.staticTexts["Could not load analyses"].waitForExistence(timeout: 20)
+    capture(app, name: "Revoked session cache cleared")
+    XCTAssertTrue(unavailable, "Automatic session removal must clear private history just like manual sign-out")
+    XCTAssertFalse(app.buttons["Open analysis from 10/17/2026"].exists)
+  }
+
+  @MainActor
   func testHistoryInitialFailureDoesNotClaimEmptyAccount() throws {
     continueAfterFailure = false
     try fixturePost("/__test/jobs", body: [])
@@ -204,8 +259,7 @@ final class ResultRecoveryTests: XCTestCase {
     }
     try fixturePost("/__test/jobs", body: seeded)
     try failures(["history_page": true])
-    let app = try openAnalysis()
-    app.buttons["Analyses, tab, 1 of 3"].tap()
+    let app = try openHistory()
     for _ in 0..<7 { app.swipeUp() }
     let error = app.staticTexts["Could not load more analyses"]
     let visible = error.waitForExistence(timeout: 20)
@@ -407,6 +461,25 @@ final class ResultRecoveryTests: XCTestCase {
     XCTAssertTrue(app.otherElements["Analysis video ready"].waitForExistence(timeout: 20))
     XCTAssertFalse(app.staticTexts["Video could not load"].exists)
     capture(app, name: "Video download recovered")
+  }
+
+  @MainActor
+  private func signIn(_ app: XCUIApplication) {
+    app.buttons["Sign in"].tap()
+    let email = app.textFields["you@example.com"]
+    XCTAssertTrue(email.waitForExistence(timeout: 10))
+    email.tap()
+    email.typeText("ui-test@example.com")
+    app.secureTextFields.firstMatch.tap()
+    app.secureTextFields.firstMatch.typeText("fixture-password")
+    app.buttons["Sign in"].tap()
+    XCTAssertTrue(app.staticTexts["Your analyses"].waitForExistence(timeout: 15))
+    let system = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+    if app.buttons["Not Now"].waitForExistence(timeout: 10) {
+      app.buttons["Not Now"].tap()
+    } else if system.buttons["Not Now"].exists {
+      system.buttons["Not Now"].tap()
+    }
   }
 
   @MainActor

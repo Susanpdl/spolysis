@@ -1,24 +1,33 @@
-import React from "react";
+import React, { useState } from "react";
 import { View, Text, StyleSheet, Alert, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useQueryClient } from "@tanstack/react-query";
 import { authStore } from "@/store/authStore";
 import { authService } from "@/services/auth";
 import { Button } from "@/components/Button";
 import { colors } from "@/theme";
 export default function ProfileScreen() {
   const user = authStore((s) => s.user);
-  const queries = useQueryClient();
+  const [signingOut, setSigningOut] = useState(false);
   const logout = async () => {
+    if (signingOut) return;
+    setSigningOut(true);
     try {
       const { error } = await authService.signOut();
       if (error) throw error;
-      queries.clear();
     } catch {
-      Alert.alert(
-        "Could not sign out",
-        "Please check your connection and try again.",
-      );
+      if (authStore.getState().accessToken) {
+        Alert.alert(
+          "Could not sign out",
+          "Please check your connection and try again.",
+        );
+      } else {
+        Alert.alert(
+          "Signed out on this device",
+          "Your local session was removed. We could not confirm sign-out with the service, so other sessions may still be active.",
+        );
+      }
+    } finally {
+      setSigningOut(false);
     }
   };
   return (
@@ -57,6 +66,7 @@ export default function ProfileScreen() {
         <Button
           title="Sign out"
           variant="secondary"
+          loading={signingOut}
           onPress={() =>
             Alert.alert(
               "Sign out?",

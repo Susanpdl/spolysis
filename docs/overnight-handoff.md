@@ -2,8 +2,9 @@
 
 ## Current phase
 
-Iteration 4 implements truthful missing-video and storage-outage recovery.
-Native validation, screenshot review, Python/static checks, and process cleanup are complete for this batch.
+Iteration 5 implements shared session-boundary cleanup and truthful sign-out feedback during an auth-service outage.
+Static checks, native session checks, screenshot review, and process cleanup are complete.
+The consolidated run passes 15 of 16 tests; the simplified pagination check then passes twice, as detailed below.
 Work stays in `overnight/prepared`; no worker commits, pushes, deployment, production mutations, or additional agents.
 GNHF owns `notes.md`; checkpoint status goes in ignored iteration sidecars.
 
@@ -26,6 +27,10 @@ GNHF owns `notes.md`; checkpoint status goes in ignored iteration sidecars.
 - Storage service, permission, and connectivity failures return retryable 503 rather than claiming the athlete's video is invalid; ownership and the existing 400 validation contract remain intact.
 - Native transfer-failure and missing-video checks assert transfer and confirmation counts plus recovered video readiness; nine new HTTP integration cases bring the Python suite to 24 passing tests.
 - Signed-in tests reset the fixture independently so a failed recovery assertion cannot leak a simulated outage into the next journey.
+
+- Phase 5: in-memory queries are cleared before a removed or changed authenticated identity is published, including automatic expiry and sign-out service failures.
+- Sign-out feedback distinguishes removed local credentials from unconfirmed remote revocation; repeated submissions are disabled during the request.
+- Two new native checks re-enter the same account without restarting JavaScript and verify that an unavailable history service cannot expose the previous session's cached rows.
 
 ## Native setup
 
@@ -57,6 +62,59 @@ No credentials were copied into this worktree or printed.
 The simulator library already contains the overlay used for import; it exercises transfer behavior, not reconstruction accuracy on raw footage.
 If the library is reset, use `xcrun simctl addmedia 858FB450-9823-4060-AADB-CDB3CBB58445 .gnhf/media/overlay.mp4`.
 Fixture credentials must never enter a distribution build.
+
+## Phase 5 verification
+
+The corrected native baseline reproduces retained history after automatic expired-session removal and after a sign-out HTTP 503.
+The real auth SDK receives the revoked-refresh-token response and removes the session; no app-only session bypass is used.
+Its bundle is `/tmp/spolysis-overnight-phase5-baseline.xcresult`, log is `/tmp/spolysis-overnight-phase5-baseline.log`, and attachments are `.gnhf/evidence/phase5-baseline`.
+Both checks fail on the expected missing cache cleanup before implementation.
+The sign-out flow also visibly reports failure over the welcome screen after local credentials have already been removed.
+An earlier revocation attempt used a still-valid token, which the installed SDK preserves after a proactive refresh rejection; that attempt is not evidence of failed session removal.
+The corrected fixture issues a one-second token so the rejection occurs after real expiry.
+The sign-in helper dismisses the delayed native password-save prompt before inspecting re-entry.
+
+```sh
+xcodebuild clean test -project /tmp/SpolysisOvernightUITests.xcodeproj -scheme SpolysisUITests -only-testing:SpolysisUITests -destination 'platform=iOS Simulator,id=858FB450-9823-4060-AADB-CDB3CBB58445' -derivedDataPath /tmp/spolysis-overnight-ui -resultBundlePath /tmp/spolysis-overnight-phase5-final.xcresult CODE_SIGNING_ALLOWED=NO
+```
+
+The consolidated run passes 15 of 16 tests in 371.588 seconds.
+Both new session checks pass, as do the other recovery flows, imported-video/viewer/share/sign-out journey, and authentication smoke.
+The pagination test fails before its pagination assertions because its unrelated result-entry tap makes no detail request.
+Its captured hierarchy remains on history with the intended row visible; the broader intermittent native input cause remains unestablished.
+The pagination check now starts directly in history and avoids that unnecessary result visit without automatic tap retries.
+Product code is unchanged after the consolidated run.
+The updated pagination check passes twice with zero failures in 44.866 seconds:
+
+```sh
+xcodebuild test -project /tmp/SpolysisOvernightUITests.xcodeproj -scheme SpolysisUITests -only-testing:SpolysisUITests/ResultRecoveryTests/testHistoryNextPageFailureOffersRetry -test-iterations 2 -destination 'platform=iOS Simulator,id=858FB450-9823-4060-AADB-CDB3CBB58445' -derivedDataPath /tmp/spolysis-overnight-ui -resultBundlePath /tmp/spolysis-overnight-phase5-pagination.xcresult CODE_SIGNING_ALLOWED=NO
+```
+
+There is no uninterrupted 16-test pass on the final test source in this phase.
+The consolidated log is `/tmp/spolysis-overnight-phase5-final.log`; affected-flow log is `/tmp/spolysis-overnight-phase5-pagination.log`.
+Attachments are `.gnhf/evidence/phase5-final` and `.gnhf/evidence/phase5-pagination`.
+The four new session screenshots were inspected at 1206 x 2622.
+The immediate revoked-session welcome capture occurs during navigation transition; it is not used as stable layout evidence.
+The stable warning and re-entry outage captures are preserved under `docs/screenshots/session-*.png`.
+The consolidated journey ends signed out; the later pagination checks sign back into the isolated fixture and end in history before termination.
+Metro log: `/tmp/spolysis-overnight-phase5-metro.log`; fixture log: `/tmp/spolysis-overnight-phase5-fixture.log`.
+Product and app-directory test files remain unchanged during the consolidated run.
+TypeScript, ESLint, viewer build, Ruff, fixture formatting, changed TypeScript formatting, and diff whitespace checks pass.
+
+```sh
+npm --prefix app run typecheck
+npm --prefix app run lint
+npm --prefix app run build:viewer
+.venv-test/bin/python -m ruff check api pipeline tests app/e2e/fixture.py
+.venv-test/bin/python -m ruff format --check app/e2e/fixture.py
+app/node_modules/.bin/prettier --check app/src/hooks/useAuth.ts app/src/screens/ProfileScreen.tsx
+git diff --check
+```
+
+No API or pipeline implementation changed, so the Python regression suite is not repeated in this phase.
+The phase 4 suite remains the latest CPU regression result at 24 passing tests.
+This phase clears in-memory queries and unmounts the signed-in navigation tree; it does not claim secure erasure of exported files, operating-system media caches, or other devices' sessions.
+Device airplane mode, production revocation, account deletion, and cross-account native testing remain separate claims.
 
 ## Phase 4 verification
 
@@ -204,8 +262,8 @@ No API or pipeline implementation changed, so the Python regression suite was no
 
 1. Actual network interruption, failed jobs, recording guidance, and app termination during transfer.
    HTTP transfer-failure and missing-upload recovery are implemented in phase 4.
-2. Session expiry/recovery, privacy expectations, account boundaries, and actual device-offline behavior across screens.
-   History service-failure and pagination recovery are implemented in phase 3.
+2. Device-offline session behavior, privacy expectations, account deletion/retention, and cross-account native testing.
+   Expired-session re-entry and sign-out service-error cleanup are implemented in phase 5; history service-failure and pagination recovery are implemented in phase 3.
 3. Actionable coaching and comparison interpretation, including the mismatch between highlighted joint and coaching priority in the inspected volley result.
 4. Dynamic Type, smaller screens, accessibility, and remaining empty/loading/error states.
 5. Consolidated native validation and honest handoff after those phases.
@@ -226,9 +284,10 @@ Phase 1 checkpoint: `.gnhf/checkpoints/iteration-1-result-recovery.patch`.
 Phase 2 checkpoint: `.gnhf/checkpoints/iteration-2-upload-recovery.patch`.
 Phase 3 checkpoint: `.gnhf/checkpoints/iteration-3-history-recovery.patch`.
 Phase 4 checkpoint: `.gnhf/checkpoints/iteration-4-upload-validation.patch`.
+Phase 5 checkpoint: `.gnhf/checkpoints/iteration-5-session-boundary.patch`.
 Each has an ignored status sidecar in `.gnhf/runs/objective-act-as-a-d-19111c/`.
-Phase 4 Metro on 8081 and the fixture on 8877 are stopped; neither port has a listening process.
+Phase 5 Metro on 8081 and the fixture on 8877 are stopped; neither port has a listening process.
 The test app was terminated and this worker-booted simulator was shut down, preserving its installation and data.
-The consolidated journey ends signed out; the final affected playback checks use a local fixture session and end on a result before termination.
+The phase 5 consolidated journey ends signed out; the affected pagination checks use a local fixture session and end in history before termination.
 All worker-started long-running processes are stopped.
 No useful-work exhaustion or production-release claim is made; continue the ranked backlog next iteration.

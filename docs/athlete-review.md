@@ -18,6 +18,8 @@ This is a reviewable development candidate, not a production release assertion.
 | P2 | Cached analysis statuses look current after history updates fail | Drop history responses while a processing job polls; native screen still shows ANALYZING with no warning despite repeated 503s; `.gnhf/evidence/phase3-refresh-before` | Explain that loaded statuses may be stale and offer explicit update retry; unknown initial totals no longer claim zero analyses | Native poll-failure/recovery and initial-failure/empty-state checks pass; no persistent offline cache is introduced |
 | P1 | A missing or invalid saved video is treated as upload success, so retry never transfers the needed video | Native pending-history and imported-video baselines show start-only retry after confirmation returns 400; `.gnhf/evidence/phase4-before` and `.gnhf/evidence/phase4-transfer-before` | A typed HTTP error distinguishes validation failure; local retry transfers the chosen clip again, while history explains the need to choose the original video again | All 14 consolidated native tests and both strengthened playback checks pass; no persistent transfer queue is added |
 | P2 | A storage outage is reported as a bad athlete video | Confirmation caught all storage exceptions as HTTP 400, including connectivity and permission failures | Only absent or invalid objects return 400; service failures return retryable 503 and preserve the start-only recovery path | HTTP integration tests cover missing objects, unsupported metadata, connectivity, service failure, permission failure, and recovery; 24 Python tests pass |
+| P2 | Automatic session removal and sign-out service failure retain the prior session's in-memory analysis queries | Corrected native baselines re-enter the same account during a history outage without restarting JavaScript; the old row and total remain visible; `.gnhf/evidence/phase5-baseline` | Clear queries at the shared removed-or-changed-session boundary before publishing identity changes; preserve same-athlete token refreshes | Both new session checks pass in the 15-of-16 consolidated run; the failed pagination check then passes twice; no cross-account disclosure is established |
+| P2 | Sign-out service error says the athlete is still signed in after local credentials are removed | Native auth logout returns 503; welcome appears with Could not sign out | Explain local sign-out and unconfirmed remote revocation separately; disable duplicate submissions | Native sign-out outage and re-entry check passes; does not claim other sessions were revoked |
 | P2 validation | Native checks drop 150 ms long presses on welcome and history | Original smoke and signed-in checks fail before navigation or a result request; ordinary taps complete the full signed-in journey | Ordinary taps, hittability wait, and password-dialog handling in native checks | Signed-out smoke passes in consolidated regression |
 
 ## Journey covered
@@ -90,13 +92,36 @@ Review [missing video from history](screenshots/missing-upload-recovery.png), [i
 Exact commands and result bundles are in [Overnight handoff](overnight-handoff.md).
 These checks use isolated HTTP failures and do not validate device airplane mode, app termination during transfer, or production R2/database writes.
 
+## Iteration 5 validation
+
+This phase covers the shared session lifecycle rather than only the successful profile sign-out handler.
+Corrected native baselines reproduce retained in-memory history after both automatic expiry with rejected refresh and a sign-out HTTP 503.
+The first short-session attempt used a still-valid access token; the installed auth SDK deliberately preserved it after proactive refresh rejection.
+The corrected fixture uses a one-second access token and verifies an actual automatic refresh request before session removal.
+Both baselines sign back in within the same JavaScript runtime while history is unavailable, making stale cache reuse observable.
+User-specific query keys already separate different account IDs; this audit does not establish a cross-account data leak.
+The fix clears queries before publishing a removed or changed identity and retains them for same-athlete token refreshes.
+A service error now reports local sign-out truthfully and explains that remote session revocation is unconfirmed.
+The consolidated native run passes 15 of 16 tests in 371.588 seconds, including both new session checks and the full signed-in journey.
+The pagination check fails on an unrelated dropped result-entry tap before reaching pagination; the fixture receives no detail request.
+It now starts directly in history and passes twice with zero failures in 44.866 seconds, retaining bounded request-count assertions and avoiding automatic tap retries.
+Product source is unchanged after the consolidated run.
+There is no uninterrupted 16-test pass on the final test source in this phase, and the general intermittent native input cause remains unestablished.
+Four session screenshots were inspected at 1206 x 2622; the immediate revoked-session welcome screenshot captures navigation transition rather than stable layout.
+Review the stable [sign-out service warning](screenshots/session-signout-service-warning.png) and [new-session history outage](screenshots/session-reentry-history-unavailable.png).
+TypeScript, ESLint, viewer build, Ruff, fixture formatting, and changed TypeScript formatting pass.
+No API/pipeline implementation or auth-library dependency changed.
+These checks use isolated auth responses, not production session revocation or device airplane mode.
+No secure-erasure or account-deletion claim is made.
+
 ## Ranked remaining audit
 
 1. Continue capture guidance, actual network interruption, app termination during a transfer, and failed-job recovery.
    HTTP transfer-failure and missing-upload recovery are implemented in iteration 4.
    Rejected-job navigation, pending-job restart, and confirmation retry are implemented in iteration 2.
-2. Audit session expiry/recovery, device offline across screens, privacy expectations, and account boundaries.
-   History service-failure and pagination recovery are implemented in iteration 3; airplane-mode behavior remains a separate claim.
+2. Audit device-offline sessions, privacy expectations, account deletion/retention, and cross-account behavior.
+   Expired-session re-entry and sign-out service-error cleanup are implemented in iteration 5; history service-failure and pagination recovery are implemented in iteration 3.
+   Airplane-mode behavior remains a separate claim.
 3. Review coaching clarity, comparison interpretation, attribution, and the limits visible at the moment of review.
    The inspected volley result highlights the right elbow at estimated contact but recommends a right-knee change during preparation, so the relationship between the highlighted joint and coaching priority needs review.
 4. Exercise Dynamic Type and smaller screens, loading/empty states, and accessible controls.

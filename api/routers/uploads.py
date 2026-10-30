@@ -2,7 +2,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from api.auth import get_current_user
 from api.models.job import UploadUrlRequest, UploadUrlResponse
-from api.r2 import generate_upload_url, verify_upload
+from api.r2 import InvalidUploadError, generate_upload_url, verify_upload
 from api.database import service_client
 from api.temporal_client import start_analysis_workflow
 import uuid
@@ -65,10 +65,15 @@ async def confirm_upload(job_id: str, user: dict = Depends(get_current_user)):
 
     try:
         verify_upload(job["video_r2_key"])
-    except Exception:
+    except InvalidUploadError:
         raise HTTPException(
             status_code=400,
             detail="Video upload is missing or invalid. Upload an MP4 or MOV under 500 MB.",
+        )
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail="Could not check the saved video. Retry starting the analysis without uploading again.",
         )
 
     try:

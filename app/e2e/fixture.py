@@ -62,6 +62,8 @@ failures = {
     "confirm": False,
     "history": False,
     "history_page": False,
+    "upload": False,
+    "missing_upload": False,
 }
 counters = {"uploads": 0, "confirmations": 0, "history_pages": 0}
 initial_job = dict(jobs[0])
@@ -123,6 +125,14 @@ class Handler(BaseHTTPRequestHandler):
             if failures["confirm"]:
                 self.respond({"detail": "Temporary confirmation outage"}, 503)
                 return
+            if failures["missing_upload"]:
+                self.respond(
+                    {
+                        "detail": "Video upload is missing or invalid. Upload an MP4 or MOV under 500 MB."
+                    },
+                    400,
+                )
+                return
             job_id = self.path.split("/")[2]
             next(job for job in jobs if job["id"] == job_id)["status"] = "completed"
             self.respond({"status": "processing"})
@@ -134,7 +144,12 @@ class Handler(BaseHTTPRequestHandler):
         remaining = int(self.headers.get("Content-Length", 0))
         while remaining:
             chunk = self.rfile.read(min(remaining, 65536))
+            if not chunk:
+                return
             remaining -= len(chunk)
+        if failures["upload"]:
+            self.respond({"detail": "Temporary transfer outage"}, 503)
+            return
         self.respond({})
 
     def do_GET(self):

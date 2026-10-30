@@ -2,6 +2,16 @@ import { authStore } from "@/store/authStore";
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8000";
 
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = authStore.getState().accessToken;
   const headers: Record<string, string> = {
@@ -28,10 +38,11 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(
+    throw new ApiError(
       typeof err.detail === "string"
         ? err.detail
         : `Request failed (${res.status}). Please check your video and retry.`,
+      res.status,
     );
   }
   return res.json() as Promise<T>;

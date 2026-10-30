@@ -1,9 +1,11 @@
 """HTTP lifecycle integration tests with isolated external-service adapters."""
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 import pytest
 from fastapi.testclient import TestClient
+from botocore.exceptions import ClientError, EndpointConnectionError
+from api import r2
 from api.main import app
 from api.auth import get_current_user
 from api.routers import jobs, uploads, internal
@@ -217,8 +219,72 @@ def test_missing_upload_never_starts_compute(client, monkeypatch):
     job = create(c)
 
     def reject(*args):
-        raise ValueError("missing")
+        raise r2.InvalidUploadError("missing")
 
     monkeypatch.setattr(uploads, "verify_upload", reject)
+    assert c.post(f"/uploads/{job}/confirm").status_code == 400
+    uploads.start_analysis_workflow.assert_not_awaited()
+
+
+@pytest.mark.parametrize("code", ["404", "NoSuchKey", "NotFound"])
+def test_missing_storage_object_needs_new_upload(client, monkeypatch, code):
+    c, db = client
+    job = create(c)
+    storage = Mock()
+    storage.head_object.side_effect = ClientError(
+        {"Error": {"Code": code}}, "HeadObject"
+    )
+    monkeypatch.setattr(r2, "get_r2_client", lambda: storage)
+    monkeypatch.setattr(uploads, "verify_upload", r2.verify_upload)
+    assert c.post(f"/uploads/{job}/confirm").status_code == 400
+    assert db.rows["jobs"][0]["status"] == "pending"
+    uploads.start_analysis_workflow.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        ClientError({"Error": {"Code": "InternalError"}}, "HeadObject"),
+        ClientError({"Error": {"Code": "AccessDenied"}}, "HeadObject"),
+        EndpointConnectionError(endpoint_url="https://storage.example"),
+    ],
+)
+def test_storage_outage_retries_start_without_new_upload(client, monkeypatch, error):
+    c, db = client
+    job = create(c)
+    storage = Mock()
+    storage.head_object.side_effect = error
+    monkeypatch.setattr(r2, "get_r2_client", lambda: storage)
+    monkeypatch.setattr(uploads, "verify_upload", r2.verify_upload)
+    response = c.post(f"/uploads/{job}/confirm")
+    assert response.status_code == 503
+    assert "Retry starting" in response.json()["detail"]
+    assert db.rows["jobs"][0]["status"] == "pending"
+    uploads.start_analysis_workflow.assert_not_awaited()
+    storage.head_object.side_effect = None
+    storage.head_object.return_value = {
+        "ContentLength": 1024,
+        "ContentType": "video/mp4",
+    }
+    assert c.post(f"/uploads/{job}/confirm").status_code == 200
+    uploads.start_analysis_workflow.assert_awaited_once()
+    assert len(db.rows["jobs"]) == 1
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {"ContentLength": 0, "ContentType": "video/mp4"},
+        {"ContentLength": 500 * 1024 * 1024 + 1, "ContentType": "video/mp4"},
+        {"ContentLength": 1024, "ContentType": "image/jpeg"},
+    ],
+)
+def test_invalid_storage_object_never_starts_compute(client, monkeypatch, metadata):
+    c, _ = client
+    job = create(c)
+    storage = Mock()
+    storage.head_object.return_value = metadata
+    monkeypatch.setattr(r2, "get_r2_client", lambda: storage)
+    monkeypatch.setattr(uploads, "verify_upload", r2.verify_upload)
     assert c.post(f"/uploads/{job}/confirm").status_code == 400
     uploads.start_analysis_workflow.assert_not_awaited()

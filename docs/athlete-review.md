@@ -16,6 +16,8 @@ This is a reviewable development candidate, not a production release assertion.
 | P2 | Confirmation failure is presented as a failed upload, encouraging unnecessary re-selection | Native imported clip uploads successfully, fixture confirmation returns 503, UI says Upload interrupted; `.gnhf/evidence/phase2-confirm-before.png` | Distinct confirmation failure title, explicit reuse explanation, and Start analysis again action; progress content scrolls when space is limited | Native regression checks one video transfer and two confirmation attempts |
 | P2 | History background polls activate the native pull-to-refresh control and can interfere with row interaction | Native pending-job tap at the five-second poll made no detail request and left history visible; `/tmp/spolysis-overnight-phase2-verified.xcresult`; the list used every refetch as native refreshing | Only an athlete's pull-to-refresh gesture now activates the native refresh control; automatic status polling continues | Repeated affected native flows validate selection and the import journey; polling correlation does not establish every simulator tap failure's cause |
 | P2 | Cached analysis statuses look current after history updates fail | Drop history responses while a processing job polls; native screen still shows ANALYZING with no warning despite repeated 503s; `.gnhf/evidence/phase3-refresh-before` | Explain that loaded statuses may be stale and offer explicit update retry; unknown initial totals no longer claim zero analyses | Native poll-failure/recovery and initial-failure/empty-state checks pass; no persistent offline cache is introduced |
+| P1 | A missing or invalid saved video is treated as upload success, so retry never transfers the needed video | Native pending-history and imported-video baselines show start-only retry after confirmation returns 400; `.gnhf/evidence/phase4-before` and `.gnhf/evidence/phase4-transfer-before` | A typed HTTP error distinguishes validation failure; local retry transfers the chosen clip again, while history explains the need to choose the original video again | All 14 consolidated native tests and both strengthened playback checks pass; no persistent transfer queue is added |
+| P2 | A storage outage is reported as a bad athlete video | Confirmation caught all storage exceptions as HTTP 400, including connectivity and permission failures | Only absent or invalid objects return 400; service failures return retryable 503 and preserve the start-only recovery path | HTTP integration tests cover missing objects, unsupported metadata, connectivity, service failure, permission failure, and recovery; 24 Python tests pass |
 | P2 validation | Native checks drop 150 ms long presses on welcome and history | Original smoke and signed-in checks fail before navigation or a result request; ordinary taps complete the full signed-in journey | Ordinary taps, hittability wait, and password-dialog handling in native checks | Signed-out smoke passes in consolidated regression |
 
 ## Journey covered
@@ -62,9 +64,36 @@ TypeScript, ESLint, viewer build, Python lint, fixture formatting, and HomeScree
 The Python regression suite was not repeated because API and pipeline implementation are unchanged.
 These are isolated HTTP 503 service failures, not device airplane mode or production account validation.
 
+## Iteration 4 validation
+
+This phase distinguishes a transfer failure, an unusable saved video, and an analysis-start service outage.
+The pending-history native baseline reproduces a start-only retry action even after the saved video is reported missing or invalid.
+The initial import baseline did not leave history after its tab tap and is not evidence of the upload defect.
+The corrected import baseline follows the established result-to-capture path and reproduces an upload-success claim that contradicts the server's validation failure.
+Native bundles are `/tmp/spolysis-overnight-phase4-before.xcresult` and `/tmp/spolysis-overnight-phase4-transfer-before.xcresult`.
+Local retry now clears the unusable-upload assumption and transfers the selected clip again.
+History-only jobs explain why the original video must be selected again, and pending jobs no longer display a reconstruction spinner before analysis starts.
+Storage outages preserve the existing video and offer start-only retry; only missing or invalid objects require a new transfer.
+The API change preserves the existing 400 response text and ownership checks, adds a retryable 503 for storage failures, and requires normal deployment before production behavior changes.
+The 24 Python tests pass, including nine new HTTP integration cases for storage classification and recovery.
+TypeScript and ESLint pass.
+The final consolidated native pass completes all 14 tests with zero failures in 287.153 seconds.
+It includes the 12 recovery tests, the signed-in import/viewer/share/sign-out journey, and authentication screens.
+The first consolidated attempt passed 11 of 14: a dropped history tap made no detail request, its simulated confirmation outage leaked into the signed-in journey, and the missing sign-out then blocked the authentication smoke.
+Signed-in setup now resets fixture state independently; history entry taps the visible row center without automatic interaction retries.
+The failed tap trace was already centered, so the root cause of intermittent native input failure remains unestablished.
+The consolidated pass did not repeat that failure.
+Two affected transfer checks then gained explicit native video-ready assertions and both passed again in 67.183 seconds.
+Their original result-title screenshots were captured during transition and did not establish loaded playback.
+Final failure states and loaded playback were visually inspected at 1206 x 2622.
+Review [missing video from history](screenshots/missing-upload-recovery.png), [invalid saved video](screenshots/upload-validation-recovery.png), and [transfer failure](screenshots/upload-transfer-recovery.png).
+Exact commands and result bundles are in [Overnight handoff](overnight-handoff.md).
+These checks use isolated HTTP failures and do not validate device airplane mode, app termination during transfer, or production R2/database writes.
+
 ## Ranked remaining audit
 
-1. Continue capture guidance, transfer interruption, app termination during a transfer, failed jobs, and missing-upload recovery.
+1. Continue capture guidance, actual network interruption, app termination during a transfer, and failed-job recovery.
+   HTTP transfer-failure and missing-upload recovery are implemented in iteration 4.
    Rejected-job navigation, pending-job restart, and confirmation retry are implemented in iteration 2.
 2. Audit session expiry/recovery, device offline across screens, privacy expectations, and account boundaries.
    History service-failure and pagination recovery are implemented in iteration 3; airplane-mode behavior remains a separate claim.

@@ -1,9 +1,14 @@
 from __future__ import annotations
 import boto3
 from botocore.config import Config
+from botocore.exceptions import ClientError
 from api.config import settings
 
 _client = None
+
+
+class InvalidUploadError(ValueError):
+    """The saved object is absent or fails the supported-video checks."""
 
 
 def get_r2_client():
@@ -45,8 +50,17 @@ def generate_download_url(r2_key: str) -> str:
 
 
 def verify_upload(r2_key: str) -> None:
-    obj = get_r2_client().head_object(Bucket=settings.r2_bucket_name, Key=r2_key)
+    try:
+        obj = get_r2_client().head_object(Bucket=settings.r2_bucket_name, Key=r2_key)
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") in {
+            "404",
+            "NoSuchKey",
+            "NotFound",
+        }:
+            raise InvalidUploadError("Video upload is missing.") from exc
+        raise
     if not 0 < obj["ContentLength"] <= 500 * 1024 * 1024:
-        raise ValueError("Video must be between 1 byte and 500 MB.")
+        raise InvalidUploadError("Video must be between 1 byte and 500 MB.")
     if obj.get("ContentType") not in {"video/mp4", "video/quicktime"}:
-        raise ValueError("Upload an MP4 or MOV video.")
+        raise InvalidUploadError("Upload an MP4 or MOV video.")

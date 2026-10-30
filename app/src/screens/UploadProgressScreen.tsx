@@ -13,7 +13,7 @@ import { RecordingScreenProps } from "@/navigation/types";
 import { ProgressBar } from "@/components/ProgressBar";
 import { Button } from "@/components/Button";
 import { useJob } from "@/hooks/useJob";
-import { api } from "@/services/api";
+import { api, ApiError } from "@/services/api";
 import { createVideoUpload } from "@/services/upload";
 import { colors } from "@/theme";
 
@@ -29,6 +29,7 @@ export default function UploadProgressScreen({
   const [starting, setStarting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [videoUnavailable, setVideoUnavailable] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const uploaded = useRef<string | null>(null);
   const {
@@ -47,6 +48,7 @@ export default function UploadProgressScreen({
     let task: ReturnType<typeof createVideoUpload> | undefined;
     const run = async () => {
       setError(null);
+      setVideoUnavailable(false);
       try {
         let id = uploaded.current;
         if (!id) {
@@ -93,10 +95,15 @@ export default function UploadProgressScreen({
           void queryClient.invalidateQueries({ queryKey: ["jobs"] });
         }
       } catch (e) {
-        if (alive)
+        if (alive) {
+          if (uploaded.current && e instanceof ApiError && e.status === 400) {
+            uploaded.current = null;
+            setVideoUnavailable(true);
+          }
           setError(
             e instanceof Error ? e.message : "Upload failed. Please try again.",
           );
+        }
       }
     };
     void run();
@@ -118,6 +125,7 @@ export default function UploadProgressScreen({
       await refetch();
       void queryClient.invalidateQueries({ queryKey: ["jobs"] });
     } catch (e) {
+      if (e instanceof ApiError && e.status === 400) setVideoUnavailable(true);
       setError(
         e instanceof Error
           ? e.message
@@ -127,8 +135,10 @@ export default function UploadProgressScreen({
       setStarting(false);
     }
   };
-  const confirmationError = !!error && stage === "confirm";
-  const canRetryStart = !!route.params.jobId && job?.status === "pending";
+  const confirmationError = !!error && stage === "confirm" && !videoUnavailable;
+  const awaitingStart = stage === "analysis" && job?.status === "pending";
+  const canRetryStart =
+    !!route.params.jobId && awaitingStart && !videoUnavailable;
   const failed = job?.status === "failed" || job?.status === "rejected";
   const resultUnavailable =
     job?.status === "completed" && !!resultError && !result;
@@ -155,27 +165,32 @@ export default function UploadProgressScreen({
     <SafeAreaView style={styles.page}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.card}>
-          {!error && !failed && !resultUnavailable && (
+          {!error && !failed && !resultUnavailable && !awaitingStart && (
             <ActivityIndicator size="large" color={colors.primary} />
           )}
           <Text style={styles.title}>
-            {error
-              ? confirmationError
-                ? "Video uploaded, analysis not started"
-                : canRetryStart
-                  ? "Could not start analysis"
-                  : "Upload interrupted"
-              : resultUnavailable
-                ? "Analysis ready, result unavailable"
-                : failed
-                  ? "Try another recording"
-                  : "Your stroke, in focus"}
+            {videoUnavailable
+              ? "Video needs to be uploaded again"
+              : error
+                ? confirmationError
+                  ? "Video uploaded, analysis not started"
+                  : canRetryStart
+                    ? "Could not start analysis"
+                    : "Upload interrupted"
+                : resultUnavailable
+                  ? "Analysis ready, result unavailable"
+                  : failed
+                    ? "Try another recording"
+                    : awaitingStart
+                      ? "Analysis not started"
+                      : "Your stroke, in focus"}
           </Text>
           <Text style={styles.text}>{message}</Text>
           {stage === "upload" && !error && <ProgressBar progress={progress} />}
           {!error &&
             !failed &&
             !resultUnavailable &&
+            !awaitingStart &&
             job?.status !== "completed" && (
               <Text style={styles.caption}>
                 We check the recording, reconstruct your movement and compare
@@ -189,7 +204,14 @@ export default function UploadProgressScreen({
               uploading it again.
             </Text>
           )}
-          {error && !canRetryStart && (
+          {videoUnavailable && (
+            <Text style={styles.text}>
+              {route.params.videoUri
+                ? "Retry uploading the video you chose, or choose another recording."
+                : "Choose your original video again to create a new analysis. Retrying the start request cannot restore the video."}
+            </Text>
+          )}
+          {error && !route.params.jobId && (
             <Button
               title={
                 confirmationError ? "Start analysis again" : "Retry upload"

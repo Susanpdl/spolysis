@@ -2,8 +2,8 @@
 
 ## Current phase
 
-Iteration 3 implements trustworthy history failure and pagination recovery.
-Consolidated native validation, screenshot review, and cleanup are complete for this batch.
+Iteration 4 implements truthful missing-video and storage-outage recovery.
+Native validation, screenshot review, Python/static checks, and process cleanup are complete for this batch.
 Work stays in `overnight/prepared`; no worker commits, pushes, deployment, production mutations, or additional agents.
 GNHF owns `notes.md`; checkpoint status goes in ignored iteration sidecars.
 
@@ -21,6 +21,11 @@ GNHF owns `notes.md`; checkpoint status goes in ignored iteration sidecars.
 - Phase 3: loaded history remains visible with a stale-status warning and retry when refresh fails; unavailable initial history no longer claims zero analyses.
 - Failed pagination stops automatic requests after the normal retry budget and offers explicit retry for older analyses.
 - Native history checks cover initial outage, a genuinely empty account, failed processing-job polling, and second-page recovery with bounded request counts.
+- Phase 4: missing or invalid saved uploads clear the local upload-success assumption and retry the actual transfer when the selected clip remains available.
+- History-only pending jobs direct the athlete to select the original video again after validation fails; pending jobs no longer show a reconstruction spinner before start.
+- Storage service, permission, and connectivity failures return retryable 503 rather than claiming the athlete's video is invalid; ownership and the existing 400 validation contract remain intact.
+- Native transfer-failure and missing-video checks assert transfer and confirmation counts plus recovered video readiness; nine new HTTP integration cases bring the Python suite to 24 passing tests.
+- Signed-in tests reset the fixture independently so a failed recovery assertion cannot leak a simulated outage into the next journey.
 
 ## Native setup
 
@@ -53,7 +58,66 @@ The simulator library already contains the overlay used for import; it exercises
 If the library is reset, use `xcrun simctl addmedia 858FB450-9823-4060-AADB-CDB3CBB58445 .gnhf/media/overlay.mp4`.
 Fixture credentials must never enter a distribution build.
 
-## Verification and evidence
+## Phase 4 verification
+
+The first native bundle reproduces missing-video start-only retry from history.
+Its import test did not leave history after a tab tap, so the corrected import baseline uses the established result-to-capture path.
+That baseline reproduces a successful-upload claim even after confirmation rejects the stored video.
+Bundles: `/tmp/spolysis-overnight-phase4-before.xcresult` and `/tmp/spolysis-overnight-phase4-transfer-before.xcresult`.
+Exported baseline attachments: `.gnhf/evidence/phase4-before` and `.gnhf/evidence/phase4-transfer-before`.
+
+```sh
+xcodebuild clean test -project /tmp/SpolysisOvernightUITests.xcodeproj -scheme SpolysisUITests -only-testing:SpolysisUITests -destination 'platform=iOS Simulator,id=858FB450-9823-4060-AADB-CDB3CBB58445' -derivedDataPath /tmp/spolysis-overnight-ui -resultBundlePath /tmp/spolysis-overnight-phase4-verified.xcresult CODE_SIGNING_ALLOWED=NO
+```
+
+Consolidated result: all 14 tests pass with zero failures in 287.153 seconds.
+This covers all 12 recovery tests, the signed-in journey with import/viewer/share/sign-out, and authentication screens.
+Log: `/tmp/spolysis-overnight-phase4-verified.log`.
+The first consolidated attempt, `/tmp/spolysis-overnight-phase4-final.xcresult`, passed 11 of 14 tests.
+A dropped history tap made no detail request, the confirmation outage leaked into the following signed-in test, and the resulting missing sign-out blocked the authentication smoke.
+Signed-in setup now resets the fixture independently, and confirmation import uses the shared result-to-capture helper.
+History entry uses explicit visible-center coordinates without automatic tap retries.
+The failed tap's recorded coordinates were already centered, so its root cause is not established; do not attribute every dropped simulator tap to polling.
+The fresh consolidated pass did not repeat it.
+Keep app-directory files unchanged during native validation to avoid Metro refresh interference.
+
+The first recovered screenshots captured the result transition before proving video readiness.
+After the consolidated pass, only the two transfer tests gained a native video-ready assertion; product code remained unchanged.
+Both strengthened checks pass with zero failures in 67.183 seconds using this command:
+
+```sh
+xcodebuild test -project /tmp/SpolysisOvernightUITests.xcodeproj -scheme SpolysisUITests -only-testing:SpolysisUITests/ResultRecoveryTests/testInvalidUploadedVideoRetriesTransfer -only-testing:SpolysisUITests/ResultRecoveryTests/testInterruptedTransferRetriesBeforeStartingAnalysis -destination 'platform=iOS Simulator,id=858FB450-9823-4060-AADB-CDB3CBB58445' -derivedDataPath /tmp/spolysis-overnight-ui -resultBundlePath /tmp/spolysis-overnight-phase4-playback.xcresult CODE_SIGNING_ALLOWED=NO
+```
+
+Affected-flow log: `/tmp/spolysis-overnight-phase4-playback.log`.
+Final failure-state attachments are `.gnhf/evidence/phase4-verified`; strengthened playback captures are `.gnhf/evidence/phase4-playback`.
+The five new failure and recovered states were visually inspected at 1206 x 2622.
+Three failure screenshots are preserved under `docs/screenshots`.
+The first consolidated attachments are `.gnhf/evidence/phase4-first-pass`.
+The consolidated journey ends signed out; the later affected playback checks sign back into the isolated fixture and end on a result before termination.
+Fixture and Metro logs: `/tmp/spolysis-overnight-phase4-fixture.log` and `/tmp/spolysis-overnight-phase4-metro.log`.
+TypeScript, ESLint, viewer build during Metro startup, Ruff, and changed Python-file formatting pass.
+Phase 4 static and CPU commands:
+
+```sh
+npm --prefix app run typecheck
+npm --prefix app run lint
+.venv-test/bin/python -m pytest -q
+.venv-test/bin/python -m ruff check api pipeline tests app/e2e/fixture.py
+.venv-test/bin/python -m ruff format --check api/r2.py api/routers/uploads.py tests/test_api_flow.py app/e2e/fixture.py
+app/node_modules/.bin/prettier --check app/src/screens/UploadProgressScreen.tsx app/src/services/api.ts
+git diff --check
+```
+
+The full Python suite passes all 24 tests in 8.11 seconds with two dependency deprecation warnings.
+Those warnings concern Starlette's httpx test adapter and the existing Supabase gotrue package.
+API/storage integration tests verify absent objects, invalid size/type, service and permission errors, connection failure, and start-only retry using the same pending job.
+The fixture-native checks and HTTP integration tests are separate validation layers, not a production full-stack claim.
+The API's storage error classification requires deployment before or alongside the app change, since the old API can also return 400 for a storage outage.
+No deployment was performed.
+HTTP transfer failures do not establish device airplane-mode or process-termination recovery.
+
+## Earlier verification and evidence
 
 Phase 3 uses the consolidated command below, with its own result bundle and log.
 The fixture now supports real 20-row pagination and independent history and page-failure switches.
@@ -138,7 +202,8 @@ No API or pipeline implementation changed, so the Python regression suite was no
 
 ## Remaining ranked work and deferred decisions
 
-1. Transfer interruption, missing-upload recovery, failed jobs, recording guidance, and app termination during transfer.
+1. Actual network interruption, failed jobs, recording guidance, and app termination during transfer.
+   HTTP transfer-failure and missing-upload recovery are implemented in phase 4.
 2. Session expiry/recovery, privacy expectations, account boundaries, and actual device-offline behavior across screens.
    History service-failure and pagination recovery are implemented in phase 3.
 3. Actionable coaching and comparison interpretation, including the mismatch between highlighted joint and coaching priority in the inspected volley result.
@@ -150,6 +215,8 @@ Production Supabase DNS was unavailable when checked on 2026-10-30 in phase 1.
 Physical camera behavior, Android runtime, distribution signing, external account access, and model accuracy remain separate requirements.
 
 Durable upload queues and abandoned-job cleanup require a coordinated lifecycle and retention decision.
+A transfer retry currently creates a new pending job through the existing upload contract, so failed or abandoned pending rows may remain.
+This phase repairs recovery without adding a renewal endpoint, changing the data model, or silently defining retention.
 Recommendation for morning review: define explicit uploading, ready-to-start, and abandoned states with authenticated retry and retention before adding background transfers.
 Phase 2 recovers confirmation using the existing contract and does not implement that larger change.
 
@@ -158,9 +225,10 @@ Phase 2 recovers confirmation using the existing contract and does not implement
 Phase 1 checkpoint: `.gnhf/checkpoints/iteration-1-result-recovery.patch`.
 Phase 2 checkpoint: `.gnhf/checkpoints/iteration-2-upload-recovery.patch`.
 Phase 3 checkpoint: `.gnhf/checkpoints/iteration-3-history-recovery.patch`.
+Phase 4 checkpoint: `.gnhf/checkpoints/iteration-4-upload-validation.patch`.
 Each has an ignored status sidecar in `.gnhf/runs/objective-act-as-a-d-19111c/`.
-Phase 3 Metro on 8081 and the fixture on 8877 are stopped.
+Phase 4 Metro on 8081 and the fixture on 8877 are stopped; neither port has a listening process.
 The test app was terminated and this worker-booted simulator was shut down, preserving its installation and data.
-The consolidated journey ends signed out.
+The consolidated journey ends signed out; the final affected playback checks use a local fixture session and end on a result before termination.
 All worker-started long-running processes are stopped.
 No useful-work exhaustion or production-release claim is made; continue the ranked backlog next iteration.

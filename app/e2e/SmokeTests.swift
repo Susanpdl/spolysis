@@ -33,6 +33,12 @@ final class SmokeTests: XCTestCase {
 
 // Run only with e2e/fixture.py and Metro configured for localhost:8877.
 final class SignedInTests: XCTestCase {
+  override func setUpWithError() throws {
+    try super.setUpWithError()
+    // Prior assertion failures can bypass a recovery test's deferred reset.
+    try fixturePost("/__test/reset")
+  }
+
   @MainActor
   func testHistoryRealMotionAndRecordingSetup() throws {
     continueAfterFailure = false
@@ -62,7 +68,8 @@ final class SignedInTests: XCTestCase {
     XCTAssertTrue(analysis.waitForExistence(timeout: 15))
     let historyReady = expectation(for: NSPredicate(format: "hittable == true"), evaluatedWith: analysis)
     wait(for: [historyReady], timeout: 10)
-    analysis.tap()
+    // Use the visible row center rather than XCTest's inferred AX hit point.
+    analysis.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
     XCTAssertTrue(app.staticTexts["CORRECTED OVERLAY"].waitForExistence(timeout: 20))
     XCTAssertFalse(app.staticTexts["Could not load result"].exists)
     capture(app, name: "Real analysis video")
@@ -265,30 +272,75 @@ final class ResultRecoveryTests: XCTestCase {
   }
 
   @MainActor
+  func testMissingPendingUploadRequiresVideoAgain() throws {
+    continueAfterFailure = false
+    try fixturePost("/__test/jobs", body: [
+      ["id": "missing-pending", "tier": "premium", "status": "pending", "created_at": "2026-10-17T12:00:00Z"]
+    ])
+    try failures(["missing_upload": true])
+    let app = try openAnalysis(waitForResult: false)
+    XCTAssertTrue(app.buttons["Retry starting analysis"].waitForExistence(timeout: 15))
+    XCTAssertFalse(app.activityIndicators.firstMatch.exists)
+    app.buttons["Retry starting analysis"].tap()
+    let missing = app.staticTexts["Video needs to be uploaded again"]
+    let visible = missing.waitForExistence(timeout: 15)
+    capture(app, name: "Pending video missing from storage")
+    XCTAssertTrue(visible, "A missing video needs a new transfer, not another start request")
+    XCTAssertFalse(app.buttons["Retry starting analysis"].exists)
+    XCTAssertFalse(app.activityIndicators.firstMatch.exists)
+    XCTAssertTrue(app.buttons["Choose another video"].exists)
+    app.buttons["Choose another video"].tap()
+    XCTAssertTrue(app.staticTexts["Your next better stroke"].waitForExistence(timeout: 10))
+    XCTAssertEqual(try fixtureState()["confirmations"] as? Int, 1)
+  }
+
+  @MainActor
+  func testInvalidUploadedVideoRetriesTransfer() throws {
+    continueAfterFailure = false
+    try failures(["missing_upload": true])
+    let app = try importVideoFromHistory()
+    let missing = app.staticTexts["Video needs to be uploaded again"]
+    let visible = missing.waitForExistence(timeout: 20)
+    capture(app, name: "Transferred video rejected by storage check")
+    XCTAssertTrue(visible, "A successful transfer response must not override the server's missing-video check")
+    XCTAssertFalse(app.staticTexts["Video uploaded, analysis not started"].exists)
+    XCTAssertTrue(app.buttons["Retry upload"].exists)
+    try failures(["missing_upload": false])
+    app.buttons["Retry upload"].tap()
+    XCTAssertTrue(app.staticTexts["CORRECTED OVERLAY"].waitForExistence(timeout: 30))
+    XCTAssertTrue(app.otherElements["Analysis video ready"].waitForExistence(timeout: 20))
+    let state = try fixtureState()
+    XCTAssertEqual(state["uploads"] as? Int, 2, "The missing video must be transferred again")
+    XCTAssertEqual(state["confirmations"] as? Int, 2)
+    capture(app, name: "Missing video transferred again and recovered")
+  }
+
+  @MainActor
+  func testInterruptedTransferRetriesBeforeStartingAnalysis() throws {
+    continueAfterFailure = false
+    try failures(["upload": true])
+    let app = try importVideoFromHistory()
+    XCTAssertTrue(app.staticTexts["Upload interrupted"].waitForExistence(timeout: 20))
+    XCTAssertTrue(app.buttons["Retry upload"].exists)
+    XCTAssertFalse(app.staticTexts["Video uploaded, analysis not started"].exists)
+    XCTAssertEqual(try fixtureState()["confirmations"] as? Int, 0)
+    capture(app, name: "Video transfer interrupted")
+    try failures(["upload": false])
+    app.buttons["Retry upload"].tap()
+    XCTAssertTrue(app.staticTexts["CORRECTED OVERLAY"].waitForExistence(timeout: 30))
+    XCTAssertTrue(app.otherElements["Analysis video ready"].waitForExistence(timeout: 20))
+    let state = try fixtureState()
+    XCTAssertEqual(state["uploads"] as? Int, 2)
+    XCTAssertEqual(state["confirmations"] as? Int, 1)
+    capture(app, name: "Video transfer recovered")
+  }
+
+  @MainActor
   func testUploadConfirmationRetryKeepsUploadedVideo() throws {
     continueAfterFailure = false
     try failures(["confirm": true])
     defer { try? fixturePost("/__test/reset") }
-    let app = try openAnalysis()
-    app.buttons["Record, tab, 2 of 3"].tap()
-    // Return directly to capture from this existing result.
-    let edge = app.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.82))
-    let top = app.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.20))
-    edge.press(forDuration: 0.05, thenDragTo: top)
-    edge.press(forDuration: 0.05, thenDragTo: top)
-    app.buttons["Record another"].tap()
-    if !app.buttons["Choose a video"].isHittable { app.swipeUp() }
-    app.buttons["Choose a video"].tap()
-    let system = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-    if app.buttons["Allow Full Access"].waitForExistence(timeout: 2) {
-      app.buttons["Allow Full Access"].tap()
-    } else if system.buttons["Allow Full Access"].exists {
-      system.buttons["Allow Full Access"].tap()
-    }
-    let video = app.images.matching(NSPredicate(format: "label CONTAINS[c] 'Video'")).firstMatch
-    XCTAssertTrue(video.waitForExistence(timeout: 10))
-    video.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-    if app.buttons["Choose"].waitForExistence(timeout: 3) { app.buttons["Choose"].tap() }
+    let app = try importVideoFromHistory()
     let uploaded = app.staticTexts["Video uploaded, analysis not started"]
     let visible = uploaded.waitForExistence(timeout: 20)
     capture(app, name: "Upload confirmation interrupted")
@@ -358,6 +410,30 @@ final class ResultRecoveryTests: XCTestCase {
   }
 
   @MainActor
+  private func importVideoFromHistory() throws -> XCUIApplication {
+    let app = try openAnalysis()
+    let edge = app.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.82))
+    let top = app.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.20))
+    edge.press(forDuration: 0.05, thenDragTo: top)
+    edge.press(forDuration: 0.05, thenDragTo: top)
+    app.buttons["Record another"].tap()
+    XCTAssertTrue(app.staticTexts["Your next better stroke"].waitForExistence(timeout: 10))
+    if !app.buttons["Choose a video"].isHittable { app.swipeUp() }
+    app.buttons["Choose a video"].tap()
+    let system = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+    if app.buttons["Allow Full Access"].waitForExistence(timeout: 2) {
+      app.buttons["Allow Full Access"].tap()
+    } else if system.buttons["Allow Full Access"].exists {
+      system.buttons["Allow Full Access"].tap()
+    }
+    let video = app.images.matching(NSPredicate(format: "label CONTAINS[c] 'Video'")).firstMatch
+    XCTAssertTrue(video.waitForExistence(timeout: 10))
+    video.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+    if app.buttons["Choose"].waitForExistence(timeout: 3) { app.buttons["Choose"].tap() }
+    return app
+  }
+
+  @MainActor
   private func openHistory() throws -> XCUIApplication {
     let app = XCUIApplication(bundleIdentifier: "com.spolysis.app")
     app.launch()
@@ -391,24 +467,12 @@ final class ResultRecoveryTests: XCTestCase {
     XCTAssertTrue(analysis.waitForExistence(timeout: 15))
     let ready = expectation(for: NSPredicate(format: "hittable == true"), evaluatedWith: analysis)
     wait(for: [ready], timeout: 10)
-    analysis.tap()
+    // Use the visible row center rather than XCTest's inferred AX hit point.
+    analysis.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
     if waitForResult {
       XCTAssertTrue(app.staticTexts["CORRECTED OVERLAY"].waitForExistence(timeout: 20))
     }
     return app
-  }
-
-  private func fixturePost(_ path: String, body: Any = [:]) throws {
-    var request = URLRequest(url: URL(string: "http://localhost:8877" + path)!)
-    request.httpMethod = "POST"
-    request.httpBody = try JSONSerialization.data(withJSONObject: body)
-    let done = expectation(description: "Configure isolated fixture")
-    URLSession.shared.dataTask(with: request) { _, response, error in
-      XCTAssertNil(error)
-      XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
-      done.fulfill()
-    }.resume()
-    wait(for: [done], timeout: 5)
   }
 
   private func fixtureState() throws -> [String: Any] {
@@ -442,5 +506,22 @@ final class ResultRecoveryTests: XCTestCase {
     attachment.name = name
     attachment.lifetime = .keepAlways
     add(attachment)
+  }
+}
+
+
+// Shared fixture reset/configuration keeps signed-in tests independent after failures.
+extension XCTestCase {
+  fileprivate func fixturePost(_ path: String, body: Any = [:]) throws {
+    var request = URLRequest(url: URL(string: "http://localhost:8877" + path)!)
+    request.httpMethod = "POST"
+    request.httpBody = try JSONSerialization.data(withJSONObject: body)
+    let done = expectation(description: "Configure isolated fixture")
+    URLSession.shared.dataTask(with: request) { _, response, error in
+      XCTAssertNil(error)
+      XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+      done.fulfill()
+    }.resume()
+    wait(for: [done], timeout: 5)
   }
 }

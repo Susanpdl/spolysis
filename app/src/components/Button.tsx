@@ -83,8 +83,11 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.4 },
   text: {
     ...typography.body,
+    alignSelf: "stretch",
+    flexShrink: 1,
     fontFamily: "DMSans_700Bold",
     fontWeight: "700",
+    textAlign: "center",
   },
   primaryText: { color: colors.text.inverse },
   secondaryText: { color: colors.text.primary },

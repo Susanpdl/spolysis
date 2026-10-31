@@ -18,7 +18,7 @@ import { Button } from "@/components/Button";
 import { GettingStarted } from "@/components/GettingStarted";
 import { CharacterPortrait } from "@/components/CharacterPortrait";
 import { authStore } from "@/store/authStore";
-import { colors, spacing, typography } from "@/theme";
+import { colors, spacing } from "@/theme";
 import type { MainTabParams } from "@/navigation/types";
 
 type Nav = BottomTabNavigationProp<MainTabParams>;
@@ -75,6 +75,7 @@ export default function HomeScreen() {
         : false,
   });
   const jobs = query.data?.pages.flatMap((page) => page.jobs) ?? [];
+  const hasJobs = jobs.length > 0;
   const total = query.data?.pages[0].total;
   const startAnalysis = () =>
     navigation.navigate("Record", { screen: "Sports" });
@@ -106,7 +107,9 @@ export default function HomeScreen() {
                 <View style={styles.wordmarkBall}>
                   <Text style={styles.wordmarkBallText}>S</Text>
                 </View>
-                <Text style={styles.wordmarkText}>Spolysis</Text>
+                <Text style={styles.wordmarkText} numberOfLines={1}>
+                  Spolysis
+                </Text>
               </View>
               <TouchableOpacity
                 accessibilityRole="button"
@@ -117,44 +120,53 @@ export default function HomeScreen() {
                 style={styles.sportPill}
               >
                 <Text style={styles.sportPillIcon}>🎾</Text>
-                <Text style={styles.sportPillText}>Tennis</Text>
+                <Text style={styles.sportPillText} numberOfLines={1}>
+                  Tennis
+                </Text>
                 <Text style={styles.sportPillChevron}>⌄</Text>
               </TouchableOpacity>
             </View>
 
-            <View style={styles.hero}>
-              <TennisCourtArt />
-              <View style={styles.heroCopy}>
-                <Text style={styles.eyebrow}>YOUR PRACTICE</Text>
-                <Text style={styles.heroTitle}>Make every swing count.</Text>
-                <Text style={styles.heroDescription}>
-                  See your movement clearly. Find one useful thing to work on.
-                </Text>
-                <Button
-                  title="Start an analysis"
-                  onPress={startAnalysis}
-                  style={styles.heroButton}
-                />
-              </View>
-            </View>
-
-            <View style={styles.sectionHeading}>
-              <View>
-                <Text style={styles.sectionTitle}>Recent analyses</Text>
-                <Text style={styles.sectionSubtitle}>
-                  {total === undefined
-                    ? "Your saved practice sessions"
-                    : `${total} ${total === 1 ? "session" : "sessions"} saved`}
-                </Text>
-              </View>
-              {total ? (
-                <View style={styles.countPill}>
-                  <Text style={styles.countText}>{total}</Text>
+            {hasJobs ? (
+              <View style={styles.hero}>
+                <TennisCourtArt />
+                <View style={styles.heroCopy}>
+                  <Text style={styles.eyebrow}>YOUR PRACTICE</Text>
+                  <Text style={styles.heroTitle} maxFontSizeMultiplier={1.2}>
+                    Make every swing count.
+                  </Text>
+                  <Text style={styles.heroDescription}>
+                    See your movement clearly. Find one useful thing to work
+                    on.
+                  </Text>
+                  <Button
+                    title="Start an analysis"
+                    onPress={startAnalysis}
+                    style={styles.heroButton}
+                  />
                 </View>
-              ) : null}
-            </View>
+              </View>
+            ) : null}
 
-            {query.isRefetchError && jobs.length > 0 ? (
+            {hasJobs ? (
+              <View style={styles.sectionHeading}>
+                <View style={styles.sectionCopy}>
+                  <Text style={styles.sectionTitle}>Recent analyses</Text>
+                  <Text style={styles.sectionSubtitle}>
+                    {total === undefined
+                      ? "Your saved practice sessions"
+                      : `${total} ${total === 1 ? "session" : "sessions"} saved`}
+                  </Text>
+                </View>
+                {total ? (
+                  <View style={styles.countPill}>
+                    <Text style={styles.countText}>{total}</Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+
+            {query.isRefetchError && hasJobs ? (
               <View style={styles.notice}>
                 <Text style={styles.noticeTitle} accessibilityRole="alert">
                   Could not refresh your analyses
@@ -186,7 +198,7 @@ export default function HomeScreen() {
                 ) : (
                   <CharacterPortrait character="pipkin" size={112} />
                 )}
-                <Text style={styles.emptyTitle}>
+                <Text style={styles.emptyTitle} maxFontSizeMultiplier={1.2}>
                   {query.isError
                     ? "Your sessions could not load"
                     : "Your first session starts here"}
@@ -196,15 +208,16 @@ export default function HomeScreen() {
                     ? "Check your connection, then refresh your analyses."
                     : "Choose a stroke, record or import a clip, and explore your movement in 3D."}
                 </Text>
-                {!query.isError ? <GettingStarted embedded /> : null}
                 <Button
                   title={query.isError ? "Retry" : "Choose a sport"}
                   loading={query.isError && query.isFetching}
+                  style={styles.emptyButton}
                   onPress={() => {
                     if (query.isError) void query.refetch();
                     else startAnalysis();
                   }}
                 />
+                {!query.isError ? <GettingStarted embedded /> : null}
               </>
             )}
           </View>
@@ -228,7 +241,7 @@ export default function HomeScreen() {
             </View>
           ) : query.isFetchingNextPage ? (
             <ActivityIndicator color={colors.primary} />
-          ) : jobs.length > 0 ? (
+          ) : hasJobs ? (
             <TouchableOpacity
               accessibilityRole="button"
               onPress={startAnalysis}
@@ -289,6 +302,7 @@ const PLAYER_COLORS = [
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.background },
   list: {
+    flexGrow: 1,
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.xl,
     gap: spacing.sm,
@@ -302,6 +316,8 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   wordmark: {
+    minWidth: 0,
+    flexShrink: 1,
     height: 40,
     paddingHorizontal: 12,
     borderRadius: 14,
@@ -311,6 +327,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   wordmarkBall: {
+    flexShrink: 0,
     width: 22,
     height: 22,
     borderRadius: 11,
@@ -324,11 +341,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   wordmarkText: {
+    flexShrink: 1,
     color: colors.text.primary,
     fontFamily: "Fraunces_500Medium",
     fontSize: 18,
   },
   sportPill: {
+    minWidth: 0,
+    flexShrink: 1,
     height: 40,
     paddingHorizontal: 13,
     borderRadius: 999,
@@ -342,8 +362,9 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 5 },
     elevation: 2,
   },
-  sportPillIcon: { fontSize: 15 },
+  sportPillIcon: { flexShrink: 0, fontSize: 15 },
   sportPillText: {
+    flexShrink: 1,
     color: colors.text.primary,
     fontFamily: "Fraunces_500Medium",
     fontSize: 16,
@@ -377,14 +398,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
   },
-  heroButton: { alignSelf: "flex-start", marginTop: spacing.xs },
+  heroButton: { alignSelf: "stretch", marginTop: spacing.xs },
   courtArt: { position: "absolute", right: -16, top: 12, opacity: 0.7 },
   sectionHeading: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 4,
+    gap: spacing.sm,
   },
+  sectionCopy: { flex: 1, flexShrink: 1, minWidth: 0 },
   sectionTitle: {
     color: colors.text.primary,
     fontFamily: "Fraunces_500Medium",
@@ -397,6 +420,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   countPill: {
+    flexShrink: 0,
     minWidth: 34,
     height: 34,
     paddingHorizontal: 9,
@@ -447,12 +471,14 @@ const styles = StyleSheet.create({
   sessionMeta: { alignItems: "flex-end", gap: 2 },
   sessionChevron: { color: colors.text.muted, fontSize: 20, lineHeight: 20 },
   emptyCard: {
+    flexGrow: 1,
     backgroundColor: colors.surface,
     borderRadius: 28,
     padding: spacing.lg,
     gap: spacing.md,
     alignItems: "flex-start",
   },
+  emptyButton: { alignSelf: "stretch" },
   emptyMark: {
     width: 48,
     height: 48,

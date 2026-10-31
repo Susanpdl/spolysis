@@ -37,14 +37,8 @@ export default function ResultScreen({
   navigation,
 }: RecordingScreenProps<"Result">) {
   const { jobId } = route.params;
-  const {
-    result,
-    job,
-    isLoadingJob,
-    isLoadingResult,
-    refetch,
-    refetchResult,
-  } = useJob(jobId);
+  const { result, job, isLoadingJob, isLoadingResult, refetch, refetchResult } =
+    useJob(jobId);
   const reset = recordingStore((s) => s.reset);
 
   const [activeTab, setActiveTab] = useState<ResultTab>("video");
@@ -229,6 +223,16 @@ export default function ResultScreen({
           </Text>
         </View>
 
+        {hasMotionData && (
+          <View style={styles.windowNote}>
+            <Text style={styles.windowEyebrow}>WHAT YOU ARE REVIEWING</Text>
+            <Text style={styles.windowText}>
+              This is the strongest racket-arm-speed window the analysis
+              selected from your recording, not a swing you marked.
+            </Text>
+          </View>
+        )}
+
         {/* Result tabs */}
         {hasMotionData && (
           <View style={styles.tabBar}>
@@ -328,9 +332,11 @@ export default function ResultScreen({
               </View>
               <Text style={styles.motionGuideText}>
                 The green mannequin faces into the illustrative court. The gold
-                line follows the racket grip. Play or scrub to follow the
-                movement, or turn the view to inspect other angles. Court
-                position is not tracked in your video.
+                line follows the racket grip. The viewer opens paused at
+                estimated contact, inferred from wrist motion, not detected ball
+                impact. Play or scrub to follow the movement, or turn the view
+                to inspect other angles. Court position is not tracked in your
+                video.
               </Text>
               {!!result.fault_joints?.length && (
                 <Text style={styles.focusGuideText}>
@@ -497,6 +503,23 @@ const styles = StyleSheet.create({
     fontFamily: "DMSans_400Regular",
     fontSize: 12,
     lineHeight: 18,
+  },
+  windowNote: {
+    backgroundColor: colors.surface,
+    borderRadius: 24,
+    padding: spacing.md,
+    gap: spacing.xs,
+  },
+  windowEyebrow: {
+    ...typography.label,
+    color: colors.primary,
+    fontSize: 10,
+  },
+  windowText: {
+    color: colors.text.secondary,
+    fontFamily: "DMSans_400Regular",
+    fontSize: 14,
+    lineHeight: 20,
   },
   tabBar: {
     flexDirection: "row",

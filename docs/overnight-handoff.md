@@ -496,3 +496,11 @@ No background services, commits, production writes, or orchestrator-note edits w
 Analyzed-window start time and automatic selection copy, import checklist, upload leave-guard, and privacy guidance remain local work.
 The captain prerequisites remain the live Fly worker, tennis-analysis poller, private R2 configuration, migrations 001-004, and one real signed-in job.
 The full run stop condition is not met.
+
+## Continuation e1101d iteration 3: analyzed-window copy
+
+ResultScreen now tells the player that the reviewed motion is the strongest racket-arm-speed window the analysis selected, not a swing they marked.
+The 3D guide states that the viewer opens paused at estimated contact inferred from wrist motion, not detected ball impact.
+No start_frame field was added to public result.json, and viewer seek still uses contact_frame only.
+App TypeScript and ESLint pass; this slice was not visually verified in the simulator.
+Secondary cue phases and the iPhone 17e empty-state visual check remain local follow-up work.

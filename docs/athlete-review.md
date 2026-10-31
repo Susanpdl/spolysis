@@ -235,4 +235,15 @@ All 72 Python tests, Ruff, app TypeScript, ESLint, and changed-screen formatting
 The Python suite emits existing Starlette/httpx and gotrue deprecation warnings.
 An attempted native check failed before launch because `xcrun simctl list devices booted` could not connect to CoreSimulatorService and reported Operation not permitted accessing its log.
 No native reproduction, screenshot, layout validation, or production privacy validation is claimed.
-Import guidance, upload navigation protection, analyzed-window copy, secondary cue phases, and the iPhone 17e empty-state visual check remain pending.
+Import guidance and upload navigation protection were added later; secondary cue phases and the iPhone 17e empty-state visual check remain pending.
+
+## Continuation analyzed-window copy
+
+Continuation run e1101d iteration 3 explains on the result screen that the reviewed motion is the strongest racket-arm-speed window the analysis selected, not a swing the player marked.
+The 3D guide states that the viewer opens paused at estimated contact inferred from wrist motion, not detected ball impact.
+The coaching limits line still rejects millimetre and clinical claims.
+No `start_frame` field was added to the public result schema, and viewer seek logic still uses `contact_frame` only.
+This is copy-only; it does not change swing selection, reconstruction, or seek behavior.
+App TypeScript and ESLint are the recorded checks for this slice.
+CoreSimulator remains inaccessible here, so native layout, VoiceOver, and screenshot validation are not claimed.
+Secondary cue phases and the iPhone 17e empty-state visual check remain pending.

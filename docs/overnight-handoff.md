@@ -476,3 +476,23 @@ All started build processes exited; no background services, commits, production 
 Analyzed-window clarity, import checklist, upload leave-guard, and privacy guidance remain local work.
 Captain verification still requires the live Fly worker, tennis-analysis poller, private R2 configuration, migrations 001-004, and one real signed-in job.
 The full run stop condition is not met.
+
+## Continuation bfd94b iteration 10 - estimated-phase viewer entry
+
+The viewer load handler ignored contact_frame and always opened at frame zero.
+A local execution probe of the actual setSkeleton handler reproduced frame 0 for a payload with contact_frame 30 before the fix.
+The viewer now opens paused at an integer contact_frame within the supplied motion window, including either endpoint.
+Missing, negative, fractional, nonnumeric, or out-of-range values fall back to frame zero for historical and malformed metadata.
+Loading motion also resets the playback accumulator and Play label so a replacement payload does not inherit active playback.
+The phase is inferred from wrist motion; this does not claim true ball-contact detection.
+The source-video start_frame is not added to contact_frame because pipeline/runner.py stores contact relative to the selected window.
+
+Validation: all 72 Python tests, Ruff, app TypeScript, ESLint, viewer build, and diff checks pass.
+The probe at /tmp/check-viewer-contact.cjs passes valid contacts, both endpoints, missing/invalid metadata, rendered-frame selection, and paused playback reset using real Three.js geometry with isolated scene/control adapters.
+It does not render WebGL or exercise the native WebView bridge.
+CoreSimulator still fails with connection refused and Operation not permitted; Computer Use denied Google Chrome access, so no visual or native runtime verification is claimed.
+No background services, commits, production writes, or orchestrator-note edits were made.
+
+Analyzed-window start time and automatic selection copy, import checklist, upload leave-guard, and privacy guidance remain local work.
+The captain prerequisites remain the live Fly worker, tennis-analysis poller, private R2 configuration, migrations 001-004, and one real signed-in job.
+The full run stop condition is not met.

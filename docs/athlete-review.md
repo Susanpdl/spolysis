@@ -216,3 +216,12 @@ A local render probe reproduced the missing reason before the change and passes 
 The native selected-rejection test now asserts the history button's reason before navigating, and the simulator test target builds successfully.
 All 72 Python tests, Ruff, TypeScript, ESLint, and changed-screen formatting pass.
 CoreSimulator remains inaccessible in this sandbox, so these checks do not establish native layout, VoiceOver behavior, or a runtime UI-test pass.
+
+## Continuation estimated-phase viewer entry
+
+Continuation run bfd94b iteration 10 opens the motion viewer paused at the supplied estimated contact phase instead of always at frame zero.
+Historical results without valid phase metadata still open at frame zero.
+An isolated execution of the actual viewer load handler reproduces the old behavior and verifies the fix, boundary values, invalid metadata, and playback reset.
+All 72 Python tests, Ruff, TypeScript, ESLint, and the viewer build pass.
+CoreSimulator and browser access remain blocked, so native interaction and visual presentation are unverified.
+The phase is a wrist-motion estimate, not detected ball contact; analyzed-window timing and automatic selection explanation remain follow-up work.

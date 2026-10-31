@@ -1,7 +1,8 @@
 # Native UI checks
 
 These tests drive the installed iOS app through XCTest.
-`SmokeTests` checks the welcome, sign-up, and sign-in screens.
+`SmokeTests` checks the current storybook welcome screen, its Find your next move action, and the sign-up and sign-in screens.
+Welcome navigation uses Sign in ↗; form submission uses Sign in.
 `SignedInTests` uses an isolated local HTTP fixture and actual pipeline media to exercise history, result playback, the 3D viewer, recording setup, library import, native upload, file sharing, and sign-out.
 `ResultRecoveryTests` checks result and media failures, signed-link refresh recovery, switching between unfinished analyses, pending-job restart from history, and confirmation retry without uploading twice.
 It also covers failed history polls with cached rows, unavailable initial history, genuinely empty history, and second-page recovery.

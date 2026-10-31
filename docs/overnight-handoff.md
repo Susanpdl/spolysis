@@ -420,3 +420,21 @@ No runtime tests or new service-health checks were run, and no native or product
 No background processes, commits, production changes, or orchestrator-note edits were made.
 Local follow-up remains for workflow timeouts, analyzed-window clarity, import/recovery/privacy guidance, and obsolete native test selectors.
 In particular, `SmokeTests.swift` still expects the replaced welcome copy and needs a separately verified native test update.
+
+## Continuation bfd94b iteration 7 - native test compatibility
+
+Updated obsolete welcome and empty-history selectors in the native checks to match current screen source.
+Welcome Sign in ↗ and form Sign in remain distinct controls.
+The first build-for-testing exposed pre-existing compile errors: SignedInTests could not access chooseTennis or openHistory, which were private to ResultRecoveryTests.
+Moved these two shared helpers to a file-local XCTestCase extension; no product source or artwork changed.
+
+Validation:
+- Generated the test project with `GEM_HOME=/opt/homebrew/Cellar/cocoapods/1.17.0_1/libexec ruby app/e2e/create-project.rb`.
+- `xcodebuild build-for-testing -project /tmp/SpolysisUITests.xcodeproj -scheme SpolysisUITests -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath /tmp/spolysis-bfd94b-7-build CODE_SIGNING_ALLOWED=NO` succeeds for arm64 and x86_64.
+- Build log: `/tmp/spolysis-bfd94b-7-build.log`.
+- All 68 Python tests, Ruff, app TypeScript, ESLint, and diff checks pass.
+- `xcrun simctl list devices booted` fails with CoreSimulator connection refused and log access Operation not permitted in this sandbox.
+  Native execution and screenshot validation remain outstanding; source alignment and compilation do not establish runtime accessibility behavior.
+
+No services were started, no commits were created, and no production access was used.
+The ranked analyzed-window, capture/privacy, and workflow-timeout work remains for later iterations.

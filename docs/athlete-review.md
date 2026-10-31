@@ -189,3 +189,12 @@ Continuation run bfd94b iteration 6 aligns README onboarding with the current we
 The current-status guidance now reflects the previously recorded connectivity recovery without claiming production sign-in or database validation.
 Verification is a source/document comparison and a clean diff check, not a new native journey or production service check.
 The old welcome selectors in `SmokeTests.swift` remain a known local follow-up; historical native passes do not validate the current landing screen.
+
+## Continuation native test compatibility
+
+Continuation run bfd94b iteration 7 updates welcome, sign-out, session recovery, and empty-history selectors to the current approved copy without changing product screens or artwork.
+The native build also exposed two shared navigation helpers scoped privately to the recovery class; they now live in a file-local XCTestCase extension so both test classes compile.
+The generated test project passes simulator build-for-testing for arm64 and x86_64.
+All 68 Python tests, Ruff, app TypeScript, ESLint, and diff checks pass.
+CoreSimulator access fails in this sandbox with connection refused and Operation not permitted, so no native test execution or new screenshots are claimed.
+A simulator run remains necessary to verify accessibility labels and navigation at runtime.

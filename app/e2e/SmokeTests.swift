@@ -6,18 +6,16 @@ final class SmokeTests: XCTestCase {
     continueAfterFailure = false
     let app = XCUIApplication(bundleIdentifier: "com.spolysis.app")
     app.launch()
-    XCTAssertTrue(app.buttons["Get Started"].waitForExistence(timeout: 45))
-    XCTAssertTrue(app.staticTexts["Your first analysis"].exists)
-    XCTAssertTrue(app.staticTexts["Choose your stroke"].exists)
-    XCTAssertTrue(app.staticTexts["Record or import a video"].exists)
-    XCTAssertTrue(app.staticTexts["Explore your swing in 3D"].exists)
-    XCTAssertTrue(app.buttons["Sign in"].exists)
+    XCTAssertTrue(app.buttons["Find your next move  ↗"].waitForExistence(timeout: 45))
+    XCTAssertTrue(app.staticTexts["A FRESH PERSPECTIVE ON YOUR GAME"].exists)
+    XCTAssertTrue(app.staticTexts["Your video. Your movement. Your next step."].exists)
+    XCTAssertTrue(app.buttons["Sign in ↗"].exists)
     let welcome = XCTAttachment(screenshot: app.screenshot())
-    welcome.name = "Get started"
+    welcome.name = "Welcome"
     welcome.lifetime = .keepAlways
     add(welcome)
-    if !app.buttons["Get Started"].isHittable { app.swipeUp() }
-    app.buttons["Get Started"].tap()
+    if !app.buttons["Find your next move  ↗"].isHittable { app.swipeUp() }
+    app.buttons["Find your next move  ↗"].tap()
     XCTAssertTrue(app.textFields["you@example.com"].waitForExistence(timeout: 10))
     XCTAssertTrue(app.secureTextFields["At least 8 characters"].exists)
     let attachment = XCTAttachment(screenshot: app.screenshot())
@@ -25,7 +23,7 @@ final class SmokeTests: XCTestCase {
     attachment.lifetime = .keepAlways
     add(attachment)
     app.buttons["Back"].tap()
-    app.buttons["Sign in"].tap()
+    app.buttons["Sign in ↗"].tap()
     XCTAssertTrue(app.textFields["you@example.com"].waitForExistence(timeout: 10))
     XCTAssertTrue(app.secureTextFields.firstMatch.exists)
   }
@@ -44,11 +42,11 @@ final class SignedInTests: XCTestCase {
     continueAfterFailure = false
     let app = XCUIApplication(bundleIdentifier: "com.spolysis.app")
     app.launch()
-    let landing = app.staticTexts.matching(NSPredicate(format: "label IN %@", ["Spolysis", "Recent analyses"])).firstMatch
+    let landing = app.staticTexts.matching(NSPredicate(format: "label IN %@", ["A FRESH PERSPECTIVE ON YOUR GAME", "Recent analyses"])).firstMatch
     XCTAssertTrue(landing.waitForExistence(timeout: 45))
-    let signingIn = app.buttons["Sign in"].exists
+    let signingIn = app.buttons["Sign in ↗"].exists
     if signingIn {
-      app.buttons["Sign in"].tap()
+      app.buttons["Sign in ↗"].tap()
       let email = app.textFields["you@example.com"]
       XCTAssertTrue(email.waitForExistence(timeout: 10))
       email.tap()
@@ -130,7 +128,7 @@ final class SignedInTests: XCTestCase {
     capture(app, name: "Account")
     app.buttons["Sign out"].tap()
     app.alerts.buttons["Sign out"].tap()
-    XCTAssertTrue(app.buttons["Get Started"].waitForExistence(timeout: 15))
+    XCTAssertTrue(app.buttons["Find your next move  ↗"].waitForExistence(timeout: 15))
   }
 
   @MainActor
@@ -178,7 +176,7 @@ final class ResultRecoveryTests: XCTestCase {
     XCTAssertTrue(app.buttons["Sign out"].waitForExistence(timeout: 10))
     app.buttons["Sign out"].tap()
     app.alerts.buttons["Sign out"].tap()
-    XCTAssertTrue(app.buttons["Get Started"].waitForExistence(timeout: 15))
+    XCTAssertTrue(app.buttons["Find your next move  ↗"].waitForExistence(timeout: 15))
     let falseFailure = app.alerts["Could not sign out"].waitForExistence(timeout: 2)
     let localNotice = app.alerts["Signed out on this device"].exists
     capture(app, name: "Sign out during auth service outage")
@@ -206,13 +204,13 @@ final class ResultRecoveryTests: XCTestCase {
     XCTAssertTrue(app.buttons["Sign out"].waitForExistence(timeout: 10))
     app.buttons["Sign out"].tap()
     app.alerts.buttons["Sign out"].tap()
-    XCTAssertTrue(app.buttons["Get Started"].waitForExistence(timeout: 15))
+    XCTAssertTrue(app.buttons["Find your next move  ↗"].waitForExistence(timeout: 15))
     try failures(["short_session": true])
     signIn(app)
     XCTAssertTrue(app.buttons["Open analysis from 10/17/2026"].waitForExistence(timeout: 15))
     try failures(["refresh_rejected": true])
     // The real auth SDK handles the next automatic refresh and emits SIGNED_OUT.
-    XCTAssertTrue(app.buttons["Get Started"].waitForExistence(timeout: 45))
+    XCTAssertTrue(app.buttons["Find your next move  ↗"].waitForExistence(timeout: 45))
     XCTAssertGreaterThan(try fixtureState()["refreshes"] as? Int ?? 0, 0)
     capture(app, name: "Revoked session returns to sign in")
     try failures(["short_session": false, "refresh_rejected": false, "history": true])
@@ -232,11 +230,11 @@ final class ResultRecoveryTests: XCTestCase {
     XCTAssertTrue(app.staticTexts["Could not load analyses"].waitForExistence(timeout: 20))
     XCTAssertTrue(app.staticTexts["Your saved practice sessions"].exists)
     XCTAssertFalse(app.staticTexts["0 sessions saved"].exists)
-    XCTAssertFalse(app.buttons["Start your first analysis"].exists)
+    XCTAssertFalse(app.buttons["Choose a sport"].exists)
     capture(app, name: "History initial load interrupted")
     try failures(["history": false])
     app.buttons["Retry"].tap()
-    XCTAssertTrue(app.buttons["Start your first analysis"].waitForExistence(timeout: 15))
+    XCTAssertTrue(app.buttons["Choose a sport"].waitForExistence(timeout: 15))
     XCTAssertTrue(app.staticTexts["0 sessions saved"].exists)
     XCTAssertTrue(app.staticTexts["Choose your stroke"].exists)
     capture(app, name: "History genuinely empty")
@@ -483,7 +481,7 @@ final class ResultRecoveryTests: XCTestCase {
 
   @MainActor
   private func signIn(_ app: XCUIApplication) {
-    app.buttons["Sign in"].tap()
+    app.buttons["Sign in ↗"].tap()
     let email = app.textFields["you@example.com"]
     XCTAssertTrue(email.waitForExistence(timeout: 10))
     email.tap()
@@ -500,19 +498,7 @@ final class ResultRecoveryTests: XCTestCase {
     }
   }
 
-  @MainActor
-  private func chooseTennis(_ app: XCUIApplication) {
-    XCTAssertTrue(app.staticTexts["Choose a sport"].waitForExistence(timeout: 10))
-    let tennis = app.buttons["Tennis, available"]
-    let tableTennis = app.buttons["Table tennis, coming soon"]
-    XCTAssertTrue(tennis.isEnabled)
-    XCTAssertTrue(tableTennis.exists)
-    XCTAssertFalse(tableTennis.isEnabled)
-    XCTAssertFalse(app.buttons["Soccer, coming soon"].isEnabled)
-    XCTAssertFalse(app.buttons["Basketball, coming soon"].isEnabled)
-    tennis.tap()
-    XCTAssertTrue(app.staticTexts["Your next tennis analysis"].waitForExistence(timeout: 10))
-  }
+
 
   @MainActor
   private func importVideoFromHistory() throws -> XCUIApplication {
@@ -538,32 +524,7 @@ final class ResultRecoveryTests: XCTestCase {
     return app
   }
 
-  @MainActor
-  private func openHistory() throws -> XCUIApplication {
-    let app = XCUIApplication(bundleIdentifier: "com.spolysis.app")
-    app.launch()
-    let landing = app.staticTexts.matching(NSPredicate(format: "label IN %@", ["Spolysis", "Recent analyses"])).firstMatch
-    XCTAssertTrue(landing.waitForExistence(timeout: 45))
-    let signingIn = app.buttons["Sign in"].exists
-    if signingIn {
-      app.buttons["Sign in"].tap()
-      let email = app.textFields["you@example.com"]
-      XCTAssertTrue(email.waitForExistence(timeout: 10))
-      email.tap()
-      email.typeText("ui-test@example.com")
-      app.secureTextFields.firstMatch.tap()
-      app.secureTextFields.firstMatch.typeText("fixture-password")
-      app.buttons["Sign in"].tap()
-    }
-    XCTAssertTrue(app.staticTexts["Recent analyses"].waitForExistence(timeout: 30))
-    let system = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-    if app.buttons["Not Now"].waitForExistence(timeout: signingIn ? 10 : 1) {
-      app.buttons["Not Now"].tap()
-    } else if system.buttons["Not Now"].exists {
-      system.buttons["Not Now"].tap()
-    }
-    return app
-  }
+
 
   @MainActor
   private func openAnalysis(waitForResult: Bool = true) throws -> XCUIApplication {
@@ -628,5 +589,49 @@ extension XCTestCase {
       done.fulfill()
     }.resume()
     wait(for: [done], timeout: 5)
+  }
+}
+
+// Shared navigation for the signed-in journey and recovery checks.
+extension XCTestCase {
+  @MainActor
+  fileprivate func chooseTennis(_ app: XCUIApplication) {
+    XCTAssertTrue(app.staticTexts["Choose a sport"].waitForExistence(timeout: 10))
+    let tennis = app.buttons["Tennis, available"]
+    let tableTennis = app.buttons["Table tennis, coming soon"]
+    XCTAssertTrue(tennis.isEnabled)
+    XCTAssertTrue(tableTennis.exists)
+    XCTAssertFalse(tableTennis.isEnabled)
+    XCTAssertFalse(app.buttons["Soccer, coming soon"].isEnabled)
+    XCTAssertFalse(app.buttons["Basketball, coming soon"].isEnabled)
+    tennis.tap()
+    XCTAssertTrue(app.staticTexts["Your next tennis analysis"].waitForExistence(timeout: 10))
+  }
+
+  @MainActor
+  fileprivate func openHistory() throws -> XCUIApplication {
+    let app = XCUIApplication(bundleIdentifier: "com.spolysis.app")
+    app.launch()
+    let landing = app.staticTexts.matching(NSPredicate(format: "label IN %@", ["A FRESH PERSPECTIVE ON YOUR GAME", "Recent analyses"])).firstMatch
+    XCTAssertTrue(landing.waitForExistence(timeout: 45))
+    let signingIn = app.buttons["Sign in ↗"].exists
+    if signingIn {
+      app.buttons["Sign in ↗"].tap()
+      let email = app.textFields["you@example.com"]
+      XCTAssertTrue(email.waitForExistence(timeout: 10))
+      email.tap()
+      email.typeText("ui-test@example.com")
+      app.secureTextFields.firstMatch.tap()
+      app.secureTextFields.firstMatch.typeText("fixture-password")
+      app.buttons["Sign in"].tap()
+    }
+    XCTAssertTrue(app.staticTexts["Recent analyses"].waitForExistence(timeout: 30))
+    let system = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+    if app.buttons["Not Now"].waitForExistence(timeout: signingIn ? 10 : 1) {
+      app.buttons["Not Now"].tap()
+    } else if system.buttons["Not Now"].exists {
+      system.buttons["Not Now"].tap()
+    }
+    return app
   }
 }

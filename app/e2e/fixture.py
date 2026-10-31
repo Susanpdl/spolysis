@@ -66,6 +66,7 @@ failures = {
     "history": False,
     "history_page": False,
     "upload": False,
+    "upload_hang": False,
     "missing_upload": False,
     "logout": False,
     "short_session": False,
@@ -168,6 +169,8 @@ class Handler(BaseHTTPRequestHandler):
             if not chunk:
                 return
             remaining -= len(chunk)
+        if failures["upload_hang"]:
+            time.sleep(60)
         if failures["upload"]:
             self.respond({"detail": "Temporary transfer outage"}, 503)
             return

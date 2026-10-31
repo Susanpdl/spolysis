@@ -187,6 +187,29 @@ export default function RecordScreen({
       Alert.alert("Could not open video", "Please try again.");
     }
   };
+  const strokeLabel =
+    strokes.find((stroke) => stroke.id === strokeType)?.label ?? strokeType;
+  const handLabel = handedness === "right" ? "Right-handed" : "Left-handed";
+  const confirmImport = () => {
+    Alert.alert(
+      "Before you choose a video",
+      [
+        "Check the clip before it uploads:",
+        "",
+        "• One player, with the full body and racket visible throughout the swing.",
+        "• Steady camera, good light, and a slight side view.",
+        "• 1 second to 5 minutes, MP4 or MOV, under 500 MB.",
+        "",
+        `This analysis uses ${strokeLabel}, ${handLabel}. Cancel to change those settings.`,
+        "",
+        "If you pick a clip next, it uploads for cloud analysis of estimated movement.",
+      ].join("\n"),
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Open library", onPress: () => void importVideo() },
+      ],
+    );
+  };
   const ready = initialized && validation.isValid && available;
   const cameraVisible = hasPermission && !!device && !cameraError;
   return (
@@ -361,10 +384,10 @@ export default function RecordScreen({
           title="Choose a video"
           variant="secondary"
           disabled={phase !== "preview"}
-          onPress={importVideo}
+          onPress={confirmImport}
         />
         <Text style={styles.hint}>
-          Up to 5 minutes · MP4 or MOV · Private to your account
+          1 second to 5 minutes · MP4 or MOV · Under 500 MB
         </Text>
       </ScrollView>
     </SafeAreaView>

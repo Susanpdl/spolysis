@@ -99,6 +99,12 @@ final class SignedInTests: XCTestCase {
     if !app.buttons["Choose a video"].isHittable { app.swipeUp() }
     XCTAssertTrue(app.buttons["Choose a video"].exists)
     app.buttons["Choose a video"].tap()
+    try confirmImportChecklist(app, selected: "This analysis uses Backhand, Left-handed")
+    app.alerts.buttons["Cancel"].tap()
+    XCTAssertFalse(app.alerts["Before you choose a video"].exists)
+    app.buttons["Choose a video"].tap()
+    try confirmImportChecklist(app, selected: "This analysis uses Backhand, Left-handed")
+    app.alerts.buttons["Open library"].tap()
     let allow = app.buttons["Allow Full Access"]
     if allow.waitForExistence(timeout: 3) {
       allow.tap()
@@ -387,6 +393,28 @@ final class ResultRecoveryTests: XCTestCase {
   }
 
   @MainActor
+  func testLeavingDuringUploadWarnsInsteadOfAbandoning() throws {
+    continueAfterFailure = false
+    try failures(["upload_hang": true])
+    let app = try importVideoFromHistory()
+    XCTAssertTrue(app.buttons["Cancel upload"].waitForExistence(timeout: 15))
+    XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Uploading video")).firstMatch.exists)
+    app.buttons["Cancel upload"].tap()
+    XCTAssertTrue(app.alerts["Leave this upload?"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.alerts.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "still transferring")).firstMatch.exists)
+    XCTAssertTrue(app.alerts.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Leaving now stops the upload")).firstMatch.exists)
+    app.alerts.buttons["Keep uploading"].tap()
+    XCTAssertFalse(app.alerts["Leave this upload?"].exists)
+    XCTAssertTrue(app.buttons["Cancel upload"].exists)
+    app.buttons["Cancel upload"].tap()
+    XCTAssertTrue(app.alerts["Leave this upload?"].waitForExistence(timeout: 5))
+    app.alerts.buttons["Leave"].tap()
+    XCTAssertTrue(app.buttons["Choose a video"].waitForExistence(timeout: 10))
+    XCTAssertFalse(app.alerts["Leave this upload?"].exists)
+    XCTAssertFalse(app.buttons["Cancel upload"].exists)
+  }
+
+  @MainActor
   func testInterruptedTransferRetriesBeforeStartingAnalysis() throws {
     continueAfterFailure = false
     try failures(["upload": true])
@@ -512,6 +540,12 @@ final class ResultRecoveryTests: XCTestCase {
     chooseTennis(app)
     if !app.buttons["Choose a video"].isHittable { app.swipeUp() }
     app.buttons["Choose a video"].tap()
+    try confirmImportChecklist(app, selected: "This analysis uses Forehand, Right-handed")
+    app.alerts.buttons["Cancel"].tap()
+    XCTAssertFalse(app.alerts["Before you choose a video"].exists)
+    app.buttons["Choose a video"].tap()
+    try confirmImportChecklist(app, selected: "This analysis uses Forehand, Right-handed")
+    app.alerts.buttons["Open library"].tap()
     let system = XCUIApplication(bundleIdentifier: "com.apple.springboard")
     if app.buttons["Allow Full Access"].waitForExistence(timeout: 2) {
       app.buttons["Allow Full Access"].tap()
@@ -595,6 +629,23 @@ extension XCTestCase {
 
 // Shared navigation for the signed-in journey and recovery checks.
 extension XCTestCase {
+  @MainActor
+  fileprivate func confirmImportChecklist(_ app: XCUIApplication, selected: String) throws {
+    let alert = app.alerts["Before you choose a video"]
+    XCTAssertTrue(alert.waitForExistence(timeout: 5))
+    let body = alert.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Check the clip before it uploads")).firstMatch
+    XCTAssertTrue(body.exists)
+    XCTAssertTrue(body.label.contains("full body and racket"))
+    XCTAssertTrue(body.label.contains("Steady camera, good light"))
+    XCTAssertTrue(body.label.contains("1 second to 5 minutes, MP4 or MOV, under 500 MB"))
+    XCTAssertTrue(body.label.contains(selected))
+    XCTAssertTrue(body.label.contains("cloud analysis of estimated movement"))
+    XCTAssertFalse(body.label.contains("millimetre"))
+    XCTAssertFalse(body.label.contains("clinical"))
+    XCTAssertTrue(alert.buttons["Cancel"].exists)
+    XCTAssertTrue(alert.buttons["Open library"].exists)
+  }
+
   @MainActor
   fileprivate func chooseTennis(_ app: XCUIApplication) {
     XCTAssertTrue(app.staticTexts["Choose a sport"].waitForExistence(timeout: 10))

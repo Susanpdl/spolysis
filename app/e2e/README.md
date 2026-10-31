@@ -76,7 +76,7 @@ Transfer recovery waits for the native video-ready state before capturing its re
 `/__test/jobs` seeds distinct statuses and supports actual 20-row pagination.
 `/__test/state` supplies upload, confirmation, and additional-page request counters for recovery assertions.
 The `history` and `history_page` failure switches independently interrupt the list and additional pages.
-The `upload` switch returns a transfer failure; `missing_upload` returns the confirmation endpoint's missing-or-invalid response.
+The `upload` switch returns a transfer failure; `upload_hang` delays the transfer response so an in-progress leave warning can be checked; `missing_upload` returns the confirmation endpoint's missing-or-invalid response.
 The `logout` switch returns an auth-service 503.
 The `short_session` switch issues a one-second access token; `refresh_rejected` rejects automatic token refresh with a non-retryable revoked-token response.
 The real auth SDK performs expiry and session removal; these controls do not simulate production account revocation or device airplane mode.

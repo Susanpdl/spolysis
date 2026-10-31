@@ -142,3 +142,10 @@ No secure-erasure or account-deletion claim is made.
 5. Consolidate the final native regression evidence after these cohesive phases.
 
 Physical camera behavior, Android runtime, distribution signing, production database writes, external account access, and model accuracy remain separate unverified claims.
+
+## Continuation confirmation recovery
+
+Continuation run bfd94b iteration 1 reproduces Temporal connect/start outages and post-start metadata failure through protected HTTP confirmation requests.
+Orchestration outages now return retryable 503 with saved-video reuse guidance; metadata failure after successful workflow acceptance no longer falsely reports that analysis failed to start.
+All 49 Python tests pass, including recovery and processing callbacks without saved workflow metadata; Ruff passes.
+These are isolated service-adapter tests, not native UI or production signed-in validation.

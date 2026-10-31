@@ -6,8 +6,10 @@ from api.r2 import InvalidUploadError, generate_upload_url, verify_upload
 from api.database import service_client
 from api.temporal_client import start_analysis_workflow
 import uuid
+import logging
 
 router = APIRouter(prefix="/uploads", tags=["uploads"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("/url", response_model=UploadUrlResponse, status_code=201)
@@ -84,10 +86,21 @@ async def confirm_upload(job_id: str, user: dict = Depends(get_current_user)):
             job["stroke_type"],
             job["handedness"],
         )
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail="Could not confirm analysis start. Retry starting the analysis without uploading again.",
+        )
+
+    # Temporal has accepted the durable workflow. This metadata is not required
+    # for callbacks, which identify the job directly.
+    try:
         service_client.table("jobs").update({"temporal_run_id": workflow_id}).eq(
             "id", job_id
         ).execute()
     except Exception:
-        raise HTTPException(status_code=500, detail="Failed to start analysis workflow")
+        logger.warning(
+            "Workflow started but metadata could not be saved for job %s", job_id
+        )
 
     return {"status": "ok"}

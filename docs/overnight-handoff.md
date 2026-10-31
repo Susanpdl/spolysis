@@ -331,3 +331,17 @@ The test app was terminated and this worker-booted simulator was shut down, pres
 The phase 5 consolidated journey ends signed out; the affected pagination checks use a local fixture session and end in history before termination.
 All worker-started long-running processes are stopped.
 No useful-work exhaustion or production-release claim is made; continue the ranked backlog next iteration.
+
+## Continuation run bfd94b, iteration 1: confirmation contract
+
+The protected HTTP upload-confirmation baseline reproduced three incorrect 500 responses: Temporal connection failure, workflow-start failure, and metadata persistence failure after successful workflow start.
+Temporal failures now return 503 with instructions to retry starting the saved video without uploading again.
+A successful durable workflow start remains HTTP 200 if saving `temporal_run_id` fails; the server logs a warning, and callbacks continue to identify the job by its ID.
+The existing deterministic Temporal workflow ID is preserved.
+The regression tests exercise the HTTP lifecycle and real workflow-start helper with isolated Temporal and database adapters, including recovery and a processing callback after metadata failure.
+They do not establish production connectivity or database availability.
+All 49 Python tests pass; Ruff lint and formatting of changed Python files pass.
+The suite reports existing Starlette/httpx and GoTrue deprecation warnings.
+No app files changed, no background services were started, and no commit or deployment was made.
+Ranked items 2-5 and 7-9 from the continuation objective remain for later iterations.
+Captain verification remains required for the live Fly worker, private R2 configuration, applied migrations 001-004, a real signed-in job, and the Temporal tennis-analysis poller.

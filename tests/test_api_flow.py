@@ -442,3 +442,51 @@ def test_completion_cannot_overwrite_concurrent_terminal_callback(
     for field, value in body.items():
         assert status[field] == value
     assert c.get(f"/jobs/{job}/result").status_code == 400
+
+
+@pytest.mark.parametrize("stage", ["connect", "start"])
+def test_temporal_outage_preserves_saved_upload_for_retry(client, monkeypatch, stage):
+    from api import temporal_client
+
+    c, db = client
+    job = create(c)
+    temporal = SimpleNamespace(start_workflow=AsyncMock())
+    connect = AsyncMock(return_value=temporal)
+    failing_call = connect if stage == "connect" else temporal.start_workflow
+    failing_call.side_effect = RuntimeError("private upstream detail")
+    monkeypatch.setattr(temporal_client, "get_temporal_client", connect)
+    monkeypatch.setattr(
+        uploads, "start_analysis_workflow", temporal_client.start_analysis_workflow
+    )
+
+    response = c.post(f"/uploads/{job}/confirm")
+    assert response.status_code == 503, response.text
+    assert "without uploading again" in response.json()["detail"]
+    assert "private upstream detail" not in response.text
+    assert db.rows["jobs"][0]["status"] == "pending"
+    failing_call.side_effect = None
+    assert c.post(f"/uploads/{job}/confirm").status_code == 200
+    assert len(db.rows["jobs"]) == 1
+    assert temporal.start_workflow.call_args.kwargs["id"] == f"tennis-analysis-{job}"
+
+
+def test_started_workflow_survives_metadata_write_failure(client, monkeypatch):
+    c, db = client
+    job = create(c)
+    execute = Query.execute
+
+    def fail_metadata(query):
+        if query.action == "update" and "temporal_run_id" in query.payload:
+            raise RuntimeError("metadata unavailable")
+        return execute(query)
+
+    monkeypatch.setattr(Query, "execute", fail_metadata)
+    response = c.post(f"/uploads/{job}/confirm")
+    assert response.status_code == 200, response.text
+    uploads.start_analysis_workflow.assert_awaited_once()
+    headers = {"Authorization": f"Bearer {settings.internal_api_secret}"}
+    assert (
+        c.post(f"/internal/jobs/{job}/processing", headers=headers).status_code == 200
+    )
+    assert c.get(f"/jobs/{job}").json()["status"] == "processing"
+    assert "temporal_run_id" not in db.rows["jobs"][0]

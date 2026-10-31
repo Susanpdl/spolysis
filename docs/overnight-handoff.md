@@ -390,3 +390,19 @@ An exhausted completion/rejection delivery still leaves the workflow failed and 
 Production rollout must account for existing Temporal histories; no live workflow replay or reset was performed.
 Worker liveness/timeouts, remaining app guidance, and public API hardening remain available local follow-up work.
 Captain verification remains required for the live Fly worker, private R2 access, migrations 001-004, a real signed-in job, and the tennis-analysis poller.
+
+## Continuation bfd94b iteration 5: public API surface
+
+The HTTP baseline returned 200 for unauthenticated requests to /docs, /redoc, and /openapi.json, and created an eleventh upload job within a minute.
+The API now disables all three documentation routes and applies the existing SlowAPI limiter to upload URL issuance at 10 requests per minute per client address.
+The shared limiter lives outside the application module to avoid circular imports from routers.
+An over-limit request returns 429 before creating a job or signing a storage URL; confirmation and job reads remain usable for existing uploads.
+The tests reset limiter storage between isolated HTTP lifecycles, keeping the production limiter enabled during regression checks.
+
+All 68 Python tests pass; Ruff lint, changed-file formatting, and diff checks pass.
+The checks use isolated database and storage adapters and do not establish production ingress behavior.
+The existing limiter uses process-local memory and the ASGI client address, so replicas have separate counters and users sharing an address share a quota.
+Production proxy address handling and aggregate multi-replica enforcement are not validated by these tests.
+No app files, generated Fly configuration, or orchestrator notes were changed; no background services, commits, deployment, or production writes were made.
+Workflow timeouts, analyzed-window clarity, and import/recovery/privacy guidance remain local follow-up work.
+Captain verification remains required for the live Fly worker, private R2 access, migrations 001-004, a real signed-in job, and the tennis-analysis poller.

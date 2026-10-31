@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from botocore.exceptions import ClientError, EndpointConnectionError
 from api import r2
 from api.main import app
+from api.rate_limit import limiter
 from api.auth import get_current_user
 from api.routers import jobs, uploads, internal
 from api.config import settings
@@ -87,6 +88,7 @@ class Query:
 
 @pytest.fixture
 def client(monkeypatch):
+    limiter.reset()
     db = Database()
     for module in [jobs, uploads, internal]:
         monkeypatch.setattr(module, "service_client", db)
@@ -113,6 +115,7 @@ def client(monkeypatch):
     with TestClient(app, raise_server_exceptions=False) as c:
         yield c, db
     app.dependency_overrides.clear()
+    limiter.reset()
 
 
 def create(client):
@@ -645,3 +648,28 @@ def test_saved_result_survives_completion_status_failure(client, monkeypatch):
         == 200
     )
     assert c.get(f"/jobs/{job}/result").status_code == 200
+
+
+@pytest.mark.parametrize("path", ["/docs", "/redoc", "/openapi.json"])
+def test_public_api_documentation_is_disabled(client, path):
+    c, _ = client
+    assert c.get(path).status_code == 404
+    assert c.get("/health").status_code == 200
+
+
+def test_upload_issuance_is_rate_limited_without_blocking_recovery(client, monkeypatch):
+    c, db = client
+    sign = Mock(return_value="https://storage.example/upload")
+    monkeypatch.setattr(uploads, "generate_upload_url", sign)
+    job_ids = [create(c) for _ in range(10)]
+    response = c.post(
+        "/uploads/url",
+        json={"filename": "stroke.mp4", "stroke_type": "forehand"},
+    )
+    assert response.status_code == 429, response.text
+    assert len(db.rows["jobs"]) == 10
+    assert sign.call_count == 10
+    assert c.post(f"/uploads/{job_ids[0]}/confirm").status_code == 200
+    assert c.get(f"/jobs/{job_ids[0]}").status_code == 200
+    limiter.reset()
+    assert create(c) not in job_ids

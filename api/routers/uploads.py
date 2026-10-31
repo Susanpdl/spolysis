@@ -1,6 +1,7 @@
 from __future__ import annotations
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from api.auth import get_current_user
+from api.rate_limit import limiter
 from api.models.job import UploadUrlRequest, UploadUrlResponse
 from api.r2 import InvalidUploadError, generate_upload_url, verify_upload
 from api.database import service_client
@@ -13,8 +14,9 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("/url", response_model=UploadUrlResponse, status_code=201)
+@limiter.limit("10/minute")
 async def get_upload_url(
-    body: UploadUrlRequest, user: dict = Depends(get_current_user)
+    request: Request, body: UploadUrlRequest, user: dict = Depends(get_current_user)
 ):
     """
     Create a job record and return a presigned R2 upload URL.

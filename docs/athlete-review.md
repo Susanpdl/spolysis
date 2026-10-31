@@ -174,3 +174,11 @@ Workflow completion and rejection delivery errors no longer invoke the analysis-
 All 64 Python tests and Ruff pass, including HTTP partial-completion recovery and isolated workflow branch checks.
 These checks do not run a Temporal server or establish production database concurrency.
 Exhausted delivery retries still require operational callback recovery; the job can remain processing until delivery succeeds.
+
+## Continuation public API protection
+
+Continuation run bfd94b iteration 5 disables public API documentation routes and limits new upload URL requests to 10 per minute per client address.
+HTTP regression checks verify that excess requests create no jobs or signed links, while saved-video confirmation and job reads remain available.
+All 68 Python tests and Ruff pass.
+The limiter is process-local; production proxy addressing and enforcement across replicas remain unverified.
+This is isolated API validation, not a production load test or native UI check.

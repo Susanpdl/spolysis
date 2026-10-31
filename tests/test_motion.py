@@ -139,6 +139,7 @@ def test_video_render_roundtrip(tmp_path, motion_sequence):
 
 
 def test_quality_rejects_defocused_frames(tmp_path):
+    import re
     import cv2
     from pipeline.stages.quality import check_quality
 
@@ -151,7 +152,34 @@ def test_quality_rejects_defocused_frames(tmp_path):
     cv2.imwrite(str(tmp_path / "frame.jpg"), image)
     assert check_quality(str(tmp_path), keypoints).passed
     cv2.imwrite(str(tmp_path / "frame.jpg"), cv2.GaussianBlur(image, (51, 51), 12))
-    assert not check_quality(str(tmp_path), keypoints).passed
+    result = check_quality(str(tmp_path), keypoints)
+    assert not result.passed
+    reason = result.reason or ""
+    lowered = reason.lower()
+    assert "blurry" in lowered
+    assert "lighting" in lowered
+    assert "stable" in lowered
+    assert "score" not in lowered
+    assert "sharpness" not in lowered
+    assert re.search(r"\d", reason) is None
+
+
+def test_quality_framing_reject_asks_for_recapture(tmp_path):
+    import cv2
+    from pipeline.stages.quality import check_quality
+
+    image = np.zeros((480, 640, 3), dtype=np.uint8)
+    for y in range(0, 480, 16):
+        for x in range(0, 640, 16):
+            image[y : y + 16, x : x + 16] = 255 if (x // 16 + y // 16) % 2 else 0
+    cv2.imwrite(str(tmp_path / "frame.jpg"), image)
+    keypoints = np.zeros((10, 17, 3), dtype=np.float32)
+    keypoints[:, :, 2] = 0.1
+    result = check_quality(str(tmp_path), keypoints)
+    assert not result.passed
+    lowered = (result.reason or "").lower()
+    assert "body" in lowered or "frame" in lowered
+    assert "retry this clip" not in lowered
 
 
 def test_primary_finding_is_largest_threshold_crossing_pair(motion_sequence):
@@ -188,3 +216,101 @@ def test_primary_finding_is_largest_threshold_crossing_pair(motion_sequence):
     assert "estimated contact" not in lowered
     assert "mm" not in lowered
     assert "clinical" not in lowered
+
+
+def test_service_failure_asks_to_retry_this_clip():
+    from pipeline.temporal.workflows import PLAYER_SERVICE_FAILURE
+
+    lowered = PLAYER_SERVICE_FAILURE.lower()
+    assert "retry this clip" in lowered
+    assert "try again later" in lowered
+    assert "new recording" not in lowered
+    assert "record again" not in lowered
+
+
+def test_rtmpose_missing_weights_fail_closed(tmp_path, monkeypatch):
+    import inspect
+    from pipeline.stages import pose2d
+    from pipeline.stages.pose2d import run_pose_estimation
+
+    source = inspect.getsource(pose2d)
+    assert "rtmpose-l" not in source
+    assert "metafile" not in source
+
+    (tmp_path / "frame_000001.jpg").write_bytes(b"not-an-image")
+    monkeypatch.setattr("pipeline.stages.pose2d.os.path.isfile", lambda path: False)
+    with pytest.raises(RuntimeError, match="RTMPose-x"):
+        run_pose_estimation(str(tmp_path))
+
+
+def test_rtmpose_cuda_fallback_keeps_baked_checkpoint():
+    from pipeline.stages.pose2d import (
+        _BAKED_CONFIG,
+        _BAKED_WEIGHTS,
+        _build_rtmpose_inferencer,
+    )
+
+    calls = []
+
+    class FakeInferencer:
+        def __init__(self, pose2d, pose2d_weights, device):
+            calls.append((pose2d, pose2d_weights, device))
+            if device == "cuda":
+                raise RuntimeError("CUDA not available")
+
+    inferencer = _build_rtmpose_inferencer(
+        FakeInferencer, _BAKED_CONFIG, _BAKED_WEIGHTS
+    )
+    assert isinstance(inferencer, FakeInferencer)
+    assert calls == [
+        (_BAKED_CONFIG, _BAKED_WEIGHTS, "cuda"),
+        (_BAKED_CONFIG, _BAKED_WEIGHTS, "cpu"),
+    ]
+    assert all("rtmpose-l" not in pose2d for pose2d, _, _ in calls)
+
+
+def test_missing_reference_is_failure_not_quality_reject(tmp_path, motion_sequence):
+    phases = detect_phases(motion_sequence, "forehand")
+    with pytest.raises(FileNotFoundError, match="Reference"):
+        align_to_reference(
+            motion_sequence, phases, "forehand", str(tmp_path / "missing-refs")
+        )
+
+
+def test_overlay_marks_primary_joint_without_index_labels(monkeypatch):
+    import cv2
+    from pipeline.stages.render import _draw_skeleton, _primary_joint_indices
+
+    assert _primary_joint_indices("right_elbow") == (8,)
+    assert _primary_joint_indices("hip_rotation") == (11, 12)
+    assert _primary_joint_indices("right_shoulder_abduction") == (6,)
+    assert _primary_joint_indices("left_elbow") == (7,)
+    assert _primary_joint_indices(None) == ()
+
+    labels = []
+    original = cv2.putText
+
+    def capture_text(img, text, *args, **kwargs):
+        labels.append(str(text))
+        return original(img, text, *args, **kwargs)
+
+    monkeypatch.setattr(cv2, "putText", capture_text)
+
+    canvas = np.zeros((240, 240, 3), dtype=np.uint8)
+    kps = np.zeros((17, 2), dtype=np.float32)
+    kps[8] = [60, 60]
+    kps[10] = [180, 180]
+    for joint in range(17):
+        if joint not in {8, 10}:
+            kps[joint] = [20.0, 20.0 + joint * 8]
+    _draw_skeleton(canvas, kps, (0, 220, 100), 1.0, primary_joints=(8,))
+    assert labels == []
+
+    def painted(xy, radius=16):
+        x, y = int(xy[0]), int(xy[1])
+        region = canvas[
+            max(0, y - radius) : y + radius + 1, max(0, x - radius) : x + radius + 1
+        ]
+        return int((region > 0).any(axis=2).sum())
+
+    assert painted(kps[8]) > painted(kps[10])

@@ -9,6 +9,11 @@ with workflow.unsafe.imports_passed_through():
 
 _RETRY = RetryPolicy(maximum_attempts=3, initial_interval=timedelta(seconds=10))
 
+# Service failures are not a recapture problem. The clip can be retried later.
+PLAYER_SERVICE_FAILURE = (
+    "Analysis could not finish. Retry this clip, or try again later."
+)
+
 
 @workflow.defn
 class TennisAnalysisWorkflow:
@@ -46,9 +51,7 @@ class TennisAnalysisWorkflow:
                 notify_api,
                 args=[
                     f"/internal/jobs/{job_id}/fail",
-                    {
-                        "error_message": "Analysis could not finish. Please try a new recording."
-                    },
+                    {"error_message": PLAYER_SERVICE_FAILURE},
                 ],
                 start_to_close_timeout=timedelta(seconds=60),
                 retry_policy=_RETRY,

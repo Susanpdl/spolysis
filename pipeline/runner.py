@@ -149,11 +149,11 @@ def run_analysis(
                 .replace("other_", "left_")
             )
 
+        primary = deltas.primary
         result = {
             "stroke_type": stroke_type,
-            "fault_label": display_joint(deltas.fault_joints[0])
-            if deltas.fault_joints
-            else None,
+            "fault_label": display_joint(primary.joint) if primary else None,
+            "fault_phase": primary.phase if primary else None,
             "confidence": confidence,
             "recommendation": recommend_3d(deltas, handedness),
             "overlay_video_url": overlay_key,

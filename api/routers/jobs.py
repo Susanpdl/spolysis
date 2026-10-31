@@ -11,12 +11,16 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 
 
 def _parse_job(row: dict) -> JobResponse:
+    handedness = row.get("handedness")
+    if handedness not in {"right", "left"}:
+        handedness = None
     return JobResponse(
         id=row["id"],
         tier=row["tier"],
         status=row["status"],
         rejection_reason=row.get("rejection_reason"),
         error_message=row.get("error_message"),
+        handedness=handedness,
         created_at=datetime.fromisoformat(row["created_at"]),
         updated_at=datetime.fromisoformat(row["updated_at"]),
     )
@@ -95,6 +99,7 @@ async def get_job_result(job_id: str, user: dict = Depends(get_current_user)):
         job_id=r["job_id"],
         stroke_type=r["stroke_type"],
         fault_label=r.get("fault_label"),
+        fault_phase=r.get("fault_phase"),
         confidence=r["confidence"],
         recommendation=r["recommendation"],
         reference_clip_url=r.get("reference_clip_url"),

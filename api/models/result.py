@@ -7,6 +7,7 @@ class ResultResponse(BaseModel):
     job_id: str
     stroke_type: str
     fault_label: str | None = None
+    fault_phase: str | None = None
     confidence: float
     recommendation: str
     reference_clip_url: str | None = None

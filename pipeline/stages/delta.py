@@ -55,6 +55,7 @@ class DeltaTable:
     fault_frames: tuple[int, int] = (0, 0)
     stroke_type: str = ""
     summary: dict[str, float] = field(default_factory=dict)  # contact-phase deltas
+    primary: JointDelta | None = None
 
 
 def angle_3d(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> float:
@@ -175,18 +176,22 @@ def _find_worst_fault_frames(
     worst_joint: str,
     stroke_type: str,
     total_frames: int,
+    frames: list[int] | None = None,
 ) -> tuple[int, int]:
     """
-    Find the 10-frame window where the worst fault joint has maximum delta.
+    Find the 10-frame window where the primary fault joint has maximum delta.
 
-    Searches the full sequence frame by frame for the joint with the largest
-    per-frame |delta|, then returns a symmetric window around that frame.
+    Searches the supplied phase frames, or the full sequence, then returns a
+    symmetric window around that frame.
     """
     T = user_3d.shape[0]
+    search = [f for f in (frames or range(T)) if 0 <= f < T]
+    if not search:
+        search = list(range(T))
     max_delta = -1.0
-    worst_frame = 0
+    worst_frame = search[0]
 
-    for f in range(T):
+    for f in search:
         u_angles = _compute_angles(user_3d[f], stroke_type)
         r_angles = _compute_angles(ref_aligned[f], stroke_type)
         if worst_joint in u_angles and worst_joint in r_angles:
@@ -202,6 +207,19 @@ def _find_worst_fault_frames(
     start = max(0, worst_frame - half)
     end = min(total_frames - 1, worst_frame + half)
     return (start, end)
+
+
+def _select_primary_finding(deltas: list[JointDelta]) -> JointDelta | None:
+    """Pick the threshold-crossing (joint, phase) pair with the largest |delta|."""
+    candidates = [
+        d
+        for d in deltas
+        if d.joint in _FAULT_THRESHOLDS
+        and abs(d.delta_deg) >= _FAULT_THRESHOLDS[d.joint]
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda d: abs(d.delta_deg))
 
 
 def compute_deltas(
@@ -267,34 +285,38 @@ def compute_deltas(
             if phase_name == "contact":
                 summary[joint] = round(delta, 2)
 
-    # Identify fault joints using per-threshold logic
-    # Use contact-phase deltas as the primary signal; fall back to max across phases
+    # One primary (joint, phase) pair drives the label, recommendation, and IK window.
+    primary = _select_primary_finding(deltas)
     fault_joints: list[str] = []
-    max_abs_delta_per_joint: dict[str, float] = {}
-
-    for d in deltas:
-        cur = max_abs_delta_per_joint.get(d.joint, 0.0)
-        max_abs_delta_per_joint[d.joint] = max(cur, abs(d.delta_deg))
-
-    for joint, threshold in _FAULT_THRESHOLDS.items():
-        if joint in max_abs_delta_per_joint:
-            if max_abs_delta_per_joint[joint] >= threshold:
-                fault_joints.append(joint)
-
-    # Fault frames: find worst fault joint and locate its maximum delta window
-    fault_frames = (0, min(T - 1, _FAULT_FRAME_WINDOW))
-    if fault_joints:
-        # Sort by absolute max delta to pick the most severe fault as anchor
-        worst_joint = max(
-            fault_joints,
-            key=lambda j: max_abs_delta_per_joint.get(j, 0.0),
+    if primary is not None:
+        ordered = sorted(
+            (
+                d
+                for d in deltas
+                if d.joint in _FAULT_THRESHOLDS
+                and abs(d.delta_deg) >= _FAULT_THRESHOLDS[d.joint]
+            ),
+            key=lambda d: abs(d.delta_deg),
+            reverse=True,
         )
+        for finding in ordered:
+            if finding.joint not in fault_joints:
+                fault_joints.append(finding.joint)
+
+    fault_frames = (0, min(T - 1, _FAULT_FRAME_WINDOW))
+    if primary is not None:
         fault_frames = _find_worst_fault_frames(
-            user_3d, ref_aligned, worst_joint, stroke_type, T
+            user_3d,
+            ref_aligned,
+            primary.joint,
+            stroke_type,
+            T,
+            frames=_phase_frames(phases, primary.phase),
         )
         log.info(
             "fault_frames_located",
-            worst_joint=worst_joint,
+            worst_joint=primary.joint,
+            primary_phase=primary.phase,
             fault_frames=fault_frames,
         )
 
@@ -312,6 +334,7 @@ def compute_deltas(
         fault_frames=fault_frames,
         stroke_type=stroke_type,
         summary=summary,
+        primary=primary,
     )
 
 

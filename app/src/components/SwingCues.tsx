@@ -3,57 +3,71 @@ import { StyleSheet, Text, View } from "react-native";
 import { CharacterPortrait } from "@/components/CharacterPortrait";
 import { colors, spacing, typography } from "@/theme";
 
-type Cue = { title: string; instruction: string };
+type Cue = { title: string; instruction: string; secondary?: boolean };
 
-const cueByJoint: Record<string, Cue> = {
-  hip_rotation: {
-    title: "Turn through the shot",
-    instruction:
-      "At the violet waist marker, follow the green model's smooth hip-and-shoulder turn as the racket comes through.",
-  },
-  right_elbow: {
-    title: "Let the hitting arm flow",
-    instruction:
-      "At the violet elbow marker, copy the green model's arm shape. Keep it relaxed as the racket extends through contact.",
-  },
-  left_elbow: {
-    title: "Use your free arm for balance",
-    instruction:
-      "Compare the violet elbow with green. Let your free arm balance the turn through the swing.",
-  },
-  right_knee: {
-    title: "Drive from your legs",
-    instruction:
-      "Watch the violet knee. Follow the green model's bend on setup, then drive smoothly through the shot.",
-  },
-  right_shoulder_abduction: {
-    title: "Find a relaxed serve reach",
-    instruction:
-      "Follow the green shoulder and arm into the serve setup. Reach smoothly without forcing the shoulder.",
-  },
+const PHASE_PHRASE: Record<string, string> = {
+  preparation: "during preparation",
+  backswing: "during the backswing",
+  contact: "around estimated contact",
+  follow_through: "during the follow-through",
 };
 
-function uniqueCues(faultJoints: string[]): Cue[] {
-  const seen = new Set<string>();
-  return faultJoints
-    .filter((joint) => {
-      if (seen.has(joint)) return false;
-      seen.add(joint);
-      return true;
-    })
-    .map(
-      (joint) =>
-        cueByJoint[joint] ?? {
-          title: joint.replace(/_/g, " "),
-          instruction:
-            "Use the violet marker to find this movement. Rehearse the smooth path shown by the green model.",
-        },
-    )
-    .slice(0, 3);
+export function jointRoleLabel(
+  joint: string,
+  handedness: "right" | "left" = "right",
+): string {
+  const hitting = handedness === "left" ? "left" : "right";
+  const free = handedness === "left" ? "right" : "left";
+  if (joint === `${hitting}_elbow`) return "Hitting arm";
+  if (joint === `${free}_elbow`) return "Free arm";
+  if (joint === `${hitting}_knee`) return "Hitting-side leg";
+  if (joint === `${free}_knee`) return "Free-side leg";
+  if (joint === "hip_rotation") return "Torso turn";
+  if (joint.endsWith("shoulder_abduction")) return "Serve reach";
+  return joint.replace(/_/g, " ");
 }
 
-export function SwingCues({ faultJoints }: { faultJoints: string[] }) {
-  const cues = uniqueCues(faultJoints);
+function phasePhrase(phase?: string | null): string {
+  if (!phase) return "during this swing";
+  return PHASE_PHRASE[phase] ?? phase.replace(/_/g, " ");
+}
+
+function cueForJoint(
+  joint: string,
+  phase: string | null | undefined,
+  handedness: "right" | "left",
+  secondary: boolean,
+): Cue {
+  const role = jointRoleLabel(joint, handedness);
+  return {
+    title: secondary ? `Secondary: ${role}` : role,
+    instruction: secondary
+      ? `A smaller difference also showed up at the ${role.toLowerCase()}. Use it as extra context, not the main rehearsal.`
+      : `At the violet marker, copy the green model's ${role.toLowerCase()} ${phasePhrase(phase)}. Rehearse it slowly within a comfortable range.`,
+    secondary,
+  };
+}
+
+export function SwingCues({
+  faultJoints,
+  faultLabel,
+  faultPhase,
+  handedness = "right",
+}: {
+  faultJoints: string[];
+  faultLabel?: string | null;
+  faultPhase?: string | null;
+  handedness?: "right" | "left";
+}) {
+  const primaryJoint = faultLabel || faultJoints[0];
+  const secondaryJoints = faultJoints.filter((joint) => joint !== primaryJoint);
+  const cues: Cue[] = [];
+  if (primaryJoint) {
+    cues.push(cueForJoint(primaryJoint, faultPhase, handedness, false));
+  }
+  for (const joint of secondaryJoints.slice(0, 2)) {
+    cues.push(cueForJoint(joint, faultPhase, handedness, true));
+  }
   const hasFocus = cues.length > 0;
 
   return (
@@ -63,7 +77,7 @@ export function SwingCues({ faultJoints }: { faultJoints: string[] }) {
         <View style={styles.headerCopy}>
           <Text style={styles.eyebrow}>YOUR NEXT PRACTICE</Text>
           <Text accessibilityRole="header" style={styles.title}>
-            {hasFocus ? "Try these swing cues" : "Keep building your rhythm"}
+            {hasFocus ? "Rehearse this swing cue" : "Keep building your rhythm"}
           </Text>
         </View>
       </View>
@@ -71,8 +85,12 @@ export function SwingCues({ faultJoints }: { faultJoints: string[] }) {
       {hasFocus ? (
         cues.map((cue, index) => (
           <View key={`${cue.title}-${index}`} style={styles.cueRow}>
-            <View style={styles.bullet}>
-              <Text style={styles.bulletText}>{index + 1}</Text>
+            <View
+              style={[styles.bullet, cue.secondary && styles.secondaryBullet]}
+            >
+              <Text style={styles.bulletText}>
+                {cue.secondary ? "S" : "1"}
+              </Text>
             </View>
             <View style={styles.cueCopy}>
               <Text style={styles.cueTitle}>{cue.title}</Text>
@@ -83,7 +101,7 @@ export function SwingCues({ faultJoints }: { faultJoints: string[] }) {
       ) : (
         <Text style={styles.instruction}>
           No single movement stood out in this comparison. Watch the green model
-          through contact and keep the swing smooth and comfortable.
+          and keep the swing smooth and comfortable.
         </Text>
       )}
 
@@ -125,6 +143,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginTop: 1,
   },
+  secondaryBullet: { backgroundColor: colors.text.muted },
   bulletText: {
     color: colors.text.inverse,
     fontFamily: "DMSans_700Bold",

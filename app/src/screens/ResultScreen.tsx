@@ -18,7 +18,7 @@ import ThreeJSViewer, {
   SkeletonData,
   parseSkeleton,
 } from "@/components/ThreeJSViewer";
-import { SwingCues } from "@/components/SwingCues";
+import { SwingCues, jointRoleLabel } from "@/components/SwingCues";
 import { useJob } from "@/hooks/useJob";
 import { colors, typography, spacing } from "@/theme";
 import { recordingStore } from "@/store/recordingStore";
@@ -30,22 +30,6 @@ const STROKE_LABELS: Record<string, string> = {
   volley: "Volley",
 };
 
-const FOCUS_LABELS: Record<string, string> = {
-  hip_rotation: "Torso turn",
-  right_elbow: "Hitting arm",
-  left_elbow: "Free arm",
-  right_knee: "Leg drive",
-  right_shoulder_abduction: "Serve reach",
-  late_contact: "Late contact",
-  open_stance: "Open stance",
-  low_follow_through: "Low follow-through",
-  arm_only: "Arm-only swing",
-  no_hip_rotation: "No hip rotation",
-  grip_issue: "Grip inconsistency",
-  no_trophy_position: "Missing trophy position",
-  low_toss: "Low ball toss",
-};
-
 type ResultTab = "video" | "3d";
 
 export default function ResultScreen({
@@ -53,8 +37,14 @@ export default function ResultScreen({
   navigation,
 }: RecordingScreenProps<"Result">) {
   const { jobId } = route.params;
-  const { result, isLoadingJob, isLoadingResult, refetch, refetchResult } =
-    useJob(jobId);
+  const {
+    result,
+    job,
+    isLoadingJob,
+    isLoadingResult,
+    refetch,
+    refetchResult,
+  } = useJob(jobId);
   const reset = recordingStore((s) => s.reset);
 
   const [activeTab, setActiveTab] = useState<ResultTab>("video");
@@ -186,9 +176,9 @@ export default function ResultScreen({
     );
   }
 
+  const handedness = job?.handedness === "left" ? "left" : "right";
   const faultLabel = result.fault_label
-    ? (FOCUS_LABELS[result.fault_label] ??
-      result.fault_label.replace(/_/g, " "))
+    ? jointRoleLabel(result.fault_label, handedness)
     : null;
   const confidence = Math.round(result.confidence * 100);
 
@@ -229,6 +219,15 @@ export default function ResultScreen({
             </Text>
           </View>
         )}
+
+        <View style={styles.coachingCard}>
+          <Text style={styles.coachingEyebrow}>WHAT TO REHEARSE</Text>
+          <Text style={styles.coachingText}>{result.recommendation}</Text>
+          <Text style={styles.limitsText}>
+            Video-based estimates, not millimetre measurements or a clinical
+            assessment. Contact is inferred from wrist motion.
+          </Text>
+        </View>
 
         {/* Result tabs */}
         {hasMotionData && (
@@ -399,7 +398,12 @@ export default function ResultScreen({
               )}
             </View>
             {result.skeleton_3d_url && result.delta_summary && (
-              <SwingCues faultJoints={result.fault_joints ?? []} />
+              <SwingCues
+                faultJoints={result.fault_joints ?? []}
+                faultLabel={result.fault_label}
+                faultPhase={result.fault_phase}
+                handedness={handedness}
+              />
             )}
           </>
         )}
@@ -471,6 +475,29 @@ const styles = StyleSheet.create({
   },
   faultDot: { color: colors.warning, fontSize: 10 },
   faultText: { color: colors.warning },
+  coachingCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 24,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  coachingEyebrow: {
+    ...typography.label,
+    color: colors.primary,
+    fontSize: 10,
+  },
+  coachingText: {
+    color: colors.text.primary,
+    fontFamily: "DMSans_400Regular",
+    fontSize: 16,
+    lineHeight: 24,
+  },
+  limitsText: {
+    color: colors.text.muted,
+    fontFamily: "DMSans_400Regular",
+    fontSize: 12,
+    lineHeight: 18,
+  },
   tabBar: {
     flexDirection: "row",
     backgroundColor: colors.surface,

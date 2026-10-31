@@ -4,10 +4,32 @@ import pytest
 from pipeline.models.motionbert import MotionBERTLifter, coco_to_h36m, h36m_to_coco
 from pipeline.runner import mirror_pose
 from pipeline.stages.normalize3d import normalize_skeleton, _BONE_PAIRS
-from pipeline.stages.phases import detect_phases
+from pipeline.stages.phases import StrokePhases, detect_phases
 from pipeline.stages.align import align_to_reference
 from pipeline.stages.delta import compute_deltas, DeltaTable, JointDelta, angle_3d
 from pipeline.stages.ik import apply_ik_correction
+from pipeline.stages.recommend import recommend_3d
+
+
+def _rotate(points, pivot, axis, radians):
+    axis = axis / max(float(np.linalg.norm(axis)), 1e-9)
+    vectors = points - pivot
+    cosine, sine = np.cos(radians), np.sin(radians)
+    return (
+        pivot
+        + vectors * cosine
+        + np.cross(axis, vectors) * sine
+        + (vectors @ axis)[..., None] * axis * (1 - cosine)
+    )
+
+
+def _bend_hinge(pose, root, mid, end, children, extra_deg):
+    bent = pose.copy()
+    axis = np.cross(bent[root] - bent[mid], bent[end] - bent[mid])
+    bent[children] = _rotate(
+        bent[children], bent[mid], axis, np.radians(extra_deg)
+    )
+    return bent
 
 
 def test_joint_mapping_and_handedness():
@@ -130,3 +152,39 @@ def test_quality_rejects_defocused_frames(tmp_path):
     assert check_quality(str(tmp_path), keypoints).passed
     cv2.imwrite(str(tmp_path / "frame.jpg"), cv2.GaussianBlur(image, (51, 51), 12))
     assert not check_quality(str(tmp_path), keypoints).passed
+
+
+def test_primary_finding_is_largest_threshold_crossing_pair(motion_sequence):
+    """Knee in preparation outranks a smaller elbow difference at estimated contact."""
+    ref = motion_sequence.copy()
+    user = ref.copy()
+    total = len(ref)
+    phases = StrokePhases(
+        preparation=(0, 24),
+        backswing=(25, 44),
+        contact=45,
+        follow_through=(46, total - 1),
+        total_frames=total,
+    )
+    for frame in range(0, 25):
+        user[frame] = _bend_hinge(user[frame], 12, 14, 16, [16], -50)
+    user[45] = _bend_hinge(user[45], 6, 8, 10, [10], 25)
+
+    table = compute_deltas(user, ref, phases, "forehand")
+    assert table.primary is not None
+    assert table.primary.joint == "right_knee"
+    assert table.primary.phase == "preparation"
+    assert table.fault_joints[0] == "right_knee"
+    assert "right_elbow" in table.fault_joints
+    start, end = table.fault_frames
+    assert start <= 24
+    assert end >= 0
+    assert min(end, 24) >= max(start, 0)
+
+    text = recommend_3d(table)
+    lowered = text.lower()
+    assert "preparation" in lowered
+    assert "hitting-side leg" in lowered or "knee" in lowered
+    assert "estimated contact" not in lowered
+    assert "mm" not in lowered
+    assert "clinical" not in lowered

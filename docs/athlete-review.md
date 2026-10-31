@@ -7,7 +7,7 @@ This is a reviewable development candidate, not a production release assertion.
 
 | Severity | Issue and athlete impact | Reproduction and evidence | Implemented fix | Verification and limits |
 | --- | --- | --- | --- | --- |
-| P0 external | Production sign-in unavailable; real accounts and saved analyses blocked | Both configured Supabase hostnames fail local DNS resolution on 2026-10-30 | No production changes | Owner restoration required before real authentication and database validation |
+| P0 validation | Production sign-in and database writes remain unverified | Earlier DNS failure was superseded by user-supplied Supabase GoTrue and Fly health HTTP 200 checks at 2026-10-30 21:58 America/New_York | No production changes | Connectivity alone does not validate authentication or persistence |
 | P1 | Completed analysis misleadingly says reconstruction is ongoing when result retrieval fails | Native processing history item becomes completed, result endpoint returns 503, spinner persists; `.gnhf/evidence/completion-before.png` | Distinguish completed-result loading and failure; retry saved result without upload; keep return-to-history action | Native completion-failure recovery passes in the consolidated suite; local fixture only |
 | P1 | Video and 3D download failures leave text instructing a reload without an action | Native fixture returns 503 for actual pipeline media; baseline recovery tests fail because retry controls are absent | Visible media retry fetches fresh signed links and remounts failed video even if URL is unchanged; bounded motion download with cancellation; refresh errors remain retryable | Native media and refresh-failure recovery passes; actual signed-link expiry timing still untested |
 | P1 | Selecting another unfinished analysis keeps showing the previous job, including hiding a rejection | Open a processing row, return to analyses, open a rejected row; the native screen still reconstructs the first job; `.gnhf/evidence/phase2-wrong-job-before.png` | Navigation identifies progress screens by job or clip and result screens by job; completion navigation runs only for the focused progress screen | Native regression covers switching to a rejected job and returning to capture |
@@ -21,6 +21,14 @@ This is a reviewable development candidate, not a production release assertion.
 | P2 | Automatic session removal and sign-out service failure retain the prior session's in-memory analysis queries | Corrected native baselines re-enter the same account during a history outage without restarting JavaScript; the old row and total remain visible; `.gnhf/evidence/phase5-baseline` | Clear queries at the shared removed-or-changed-session boundary before publishing identity changes; preserve same-athlete token refreshes | Both new session checks pass in the 15-of-16 consolidated run; the failed pagination check then passes twice; no cross-account disclosure is established |
 | P2 | Sign-out service error says the athlete is still signed in after local credentials are removed | Native auth logout returns 503; welcome appears with Could not sign out | Explain local sign-out and unconfirmed remote revocation separately; disable duplicate submissions | Native sign-out outage and re-entry check passes; does not claim other sessions were revoked |
 | P2 validation | Native checks drop 150 ms long presses on welcome and history | Original smoke and signed-in checks fail before navigation or a result request; ordinary taps complete the full signed-in journey | Ordinary taps, hittability wait, and password-dialog handling in native checks | Signed-out smoke passes in consolidated regression |
+
+## Current GNHF backend verification
+
+Run `objective-make-spoly-e894a3`, iteration 1, reproduced eight authentication-service failures being mislabeled as invalid credentials through protected HTTP requests and the real GoTrue SDK.
+Service failures now return retryable HTTP 503 without authorizing requests or creating jobs; rejected credentials remain HTTP 401.
+The same token succeeds after isolated upstream recovery.
+See [Overnight handoff](overnight-handoff.md) for baseline evidence and validation limits.
+No native UI or production authentication claim is made by these checks.
 
 ## Journey covered
 

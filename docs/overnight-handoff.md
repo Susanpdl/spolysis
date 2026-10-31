@@ -2,11 +2,32 @@
 
 ## Current phase
 
-Iteration 5 implements shared session-boundary cleanup and truthful sign-out feedback during an auth-service outage.
-Static checks, native session checks, screenshot review, and process cleanup are complete.
-The consolidated run passes 15 of 16 tests; the simplified pagination check then passes twice, as detailed below.
-Work stays in `overnight/prepared`; no worker commits, pushes, deployment, production mutations, or additional agents.
-GNHF owns `notes.md`; checkpoint status goes in ignored iteration sidecars.
+Run `objective-make-spoly-e894a3`, iteration 1, hardens protected API requests during authentication-service outages.
+Work stays in the isolated GNHF worktree; no commits, pushes, deployment, production mutations, or additional agents.
+GNHF owns its run `notes.md`; this worker does not edit it.
+Earlier phases below describe the previous run and retain their original evidence.
+
+### Authentication outage classification
+
+The HTTP baseline exercised history and upload creation through the real GoTrue SDK with isolated upstream responses.
+All eight outage cases returned misleading HTTP 401 before the fix: 500, 502, 503, 504, 429, connection failure, timeout, and malformed successful response.
+Baseline log: `/tmp/spolysis-e894a3-auth-before.log` (eight failures and two passing credential-rejection checks).
+Protected endpoints now fail closed with HTTP 503 and a retry message when session verification is unavailable.
+Upstream 401 and 403 still reject credentials with HTTP 401.
+Regression checks verify that outages create no jobs or workflows and that the same token can read history and create an owned job after recovery.
+This validates local HTTP and SDK behavior, not production authentication, database writes, or native session behavior.
+Validation: `.venv-test/bin/python -m pytest -q` passes all 34 tests in 37.32 seconds.
+Ruff over `api pipeline tests`, changed Python-file formatting, `pip check`, and `git diff --check` pass.
+Two existing dependency deprecation warnings remain for Starlette's httpx adapter and Supabase's gotrue package.
+A separate Python 3.11 `.venv-test` was installed in this worktree; no mutable dependencies are shared.
+No background services were started, and all installation and validation processes exited.
+Checkpoint: `.gnhf/checkpoints/iteration-1-auth-outage.patch`.
+The change needs deployment before production behavior changes.
+
+The user supplied 2026-10-30 21:58 America/New_York health evidence: Supabase GoTrue and Fly `/health` returned HTTP 200.
+That supersedes the earlier DNS-outage snapshot below, but does not establish production sign-in or database-write readiness.
+Remaining work includes callback/Temporal recovery auditing, coaching alignment, capture and failed-job recovery, and narrow-phone/Dynamic Type verification.
+The loop stop condition is not met.
 
 ## Completed work
 

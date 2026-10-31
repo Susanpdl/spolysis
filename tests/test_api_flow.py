@@ -288,3 +288,93 @@ def test_invalid_storage_object_never_starts_compute(client, monkeypatch, metada
     monkeypatch.setattr(uploads, "verify_upload", r2.verify_upload)
     assert c.post(f"/uploads/{job}/confirm").status_code == 400
     uploads.start_analysis_workflow.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "failure", [500, 502, 503, 504, 429, "timeout", "connect", "malformed"]
+)
+def test_auth_outage_is_retryable_without_creating_jobs(client, monkeypatch, failure):
+    """Exercise app requests through real token validation and the GoTrue SDK."""
+    import httpx
+    from gotrue import SyncGoTrueClient
+    from api import auth
+
+    c, db = client
+    app.dependency_overrides.pop(get_current_user)
+    unavailable = True
+
+    def respond(request):
+        assert request.headers["Authorization"] == "Bearer athlete-token"
+        if unavailable:
+            if failure == "timeout":
+                raise httpx.ReadTimeout("private upstream detail", request=request)
+            if failure == "connect":
+                raise httpx.ConnectError("private upstream detail", request=request)
+            if failure == "malformed":
+                return httpx.Response(200, text="not JSON")
+            return httpx.Response(failure, json={"msg": "private upstream detail"})
+        return httpx.Response(
+            200,
+            json={
+                "id": "alice",
+                "aud": "authenticated",
+                "role": "authenticated",
+                "email": "alice@example.test",
+                "app_metadata": {},
+                "user_metadata": {},
+                "created_at": "2026-10-17T00:00:00Z",
+            },
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(respond)) as upstream:
+        sdk = SyncGoTrueClient(
+            http_client=upstream, auto_refresh_token=False, persist_session=False
+        )
+        monkeypatch.setattr(auth, "_auth_client", SimpleNamespace(auth=sdk))
+        headers = {"Authorization": "Bearer athlete-token"}
+        for response in [
+            c.get("/jobs", headers=headers),
+            c.post(
+                "/uploads/url",
+                headers=headers,
+                json={"filename": "stroke.mp4", "stroke_type": "forehand"},
+            ),
+        ]:
+            assert response.status_code == 503, response.text
+            assert "try again" in response.json()["detail"]
+            assert "private upstream detail" not in response.text
+        assert db.rows["jobs"] == []
+        uploads.start_analysis_workflow.assert_not_awaited()
+        unavailable = False
+        assert c.get("/jobs", headers=headers).status_code == 200
+        assert (
+            c.post(
+                "/uploads/url",
+                headers=headers,
+                json={"filename": "stroke.mp4", "stroke_type": "forehand"},
+            ).status_code
+            == 201
+        )
+        assert db.rows["jobs"][0]["user_id"] == "alice"
+
+
+@pytest.mark.parametrize("status_code", [401, 403])
+def test_rejected_auth_token_remains_unauthorized(client, monkeypatch, status_code):
+    import httpx
+    from gotrue import SyncGoTrueClient
+    from api import auth
+
+    c, db = client
+    app.dependency_overrides.pop(get_current_user)
+    with httpx.Client(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(status_code, json={"msg": "token rejected"})
+        )
+    ) as upstream:
+        sdk = SyncGoTrueClient(
+            http_client=upstream, auto_refresh_token=False, persist_session=False
+        )
+        monkeypatch.setattr(auth, "_auth_client", SimpleNamespace(auth=sdk))
+        response = c.get("/jobs", headers={"Authorization": "Bearer rejected-token"})
+        assert response.status_code == 401
+        assert db.rows["jobs"] == []

@@ -155,6 +155,19 @@ def test_3d_http_lifecycle_and_duplicate_completion(client):
     assert response.status_code == 200, response.text
     assert "?signed=1" in response.json()["overlay_video_url"]
     assert c.get(f"/jobs/{job}").json()["status"] == "completed"
+    for path, body in [
+        ("processing", {}),
+        ("fail", {"error_message": "Late failure"}),
+        ("reject", {"rejection_reason": "Late rejection"}),
+    ]:
+        assert (
+            c.post(
+                f"/internal/jobs/{job}/{path}", json=body, headers=headers
+            ).status_code
+            == 200
+        )
+        assert c.get(f"/jobs/{job}").json()["status"] == "completed"
+    assert c.get(f"/jobs/{job}/result").status_code == 200
 
 
 def test_2d_upload_is_rejected(client):
@@ -378,3 +391,54 @@ def test_rejected_auth_token_remains_unauthorized(client, monkeypatch, status_co
         response = c.get("/jobs", headers={"Authorization": "Bearer rejected-token"})
         assert response.status_code == 401
         assert db.rows["jobs"] == []
+
+
+@pytest.mark.parametrize(
+    ("terminal", "body"),
+    [
+        ("fail", {"error_message": "Analysis could not finish."}),
+        ("reject", {"rejection_reason": "Keep your full body in view."}),
+    ],
+)
+def test_completion_cannot_overwrite_concurrent_terminal_callback(
+    client, monkeypatch, terminal, body
+):
+    c, db = client
+    job = create(c)
+    assert c.post(f"/uploads/{job}/confirm").status_code == 200
+    headers = {"Authorization": f"Bearer {settings.internal_api_secret}"}
+    assert (
+        c.post(f"/internal/jobs/{job}/processing", headers=headers).status_code == 200
+    )
+    execute = Query.execute
+
+    def interleaved_execute(query):
+        result = execute(query)
+        if query.name == "results" and query.action == "upsert":
+            # A second worker callback lands after the initial status read.
+            response = c.post(
+                f"/internal/jobs/{job}/{terminal}", json=body, headers=headers
+            )
+            assert response.status_code == 200
+        return result
+
+    monkeypatch.setattr(Query, "execute", interleaved_execute)
+    response = c.post(
+        f"/internal/jobs/{job}/complete_premium",
+        headers=headers,
+        json={
+            "stroke_type": "forehand",
+            "confidence": 0.85,
+            "recommendation": "Review your elbow angle.",
+            "overlay_video_url": f"results/{job}/overlay.mp4",
+            "skeleton_3d_url": f"results/{job}/skeleton_3d.json",
+            "delta_summary": {},
+            "fault_joints": [],
+        },
+    )
+    assert response.status_code == 409, response.text
+    status = c.get(f"/jobs/{job}").json()
+    assert status["status"] == {"fail": "failed", "reject": "rejected"}[terminal]
+    for field, value in body.items():
+        assert status[field] == value
+    assert c.get(f"/jobs/{job}/result").status_code == 400

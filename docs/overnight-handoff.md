@@ -29,6 +29,25 @@ That supersedes the earlier DNS-outage snapshot below, but does not establish pr
 Remaining work includes callback/Temporal recovery auditing, coaching alignment, capture and failed-job recovery, and narrow-phone/Dynamic Type verification.
 The loop stop condition is not met.
 
+## Current GNHF iteration 2: terminal callback ordering
+
+The HTTP lifecycle reproduction interleaves a failure or rejection callback after completion reads the job status and saves its result, but before it updates the job.
+Both baseline cases returned HTTP 200 and overwrote the terminal status with completed.
+Baseline evidence: `/tmp/spolysis-e894a3-callback-before.log` (two failing regression cases).
+Completion now conditionally updates only pending, processing, or already completed jobs and returns HTTP 409 when a terminal decision wins the race.
+The athlete retains the failure or rejection message, and the result endpoint refuses to expose the saved result for that terminal job.
+Duplicate completion remains supported; late processing, failure, and rejection callbacks preserve completed results.
+
+Validation: all 36 Python tests pass in 3.82 seconds; Ruff over `api pipeline tests`, changed Python-file formatting, and diff whitespace checks pass.
+Two existing dependency deprecation warnings remain.
+Tests exercise real HTTP handlers with isolated storage, workflow, and database adapters and deterministic callback ordering; they do not validate production Postgres concurrency or a deployed worker.
+The existing two-write result/status contract can still leave an inaccessible result row when a terminal callback wins.
+A database transaction could make those writes atomic, but requires a coordinated database function/migration and is deferred; the conditional status update is the recommended bounded fix within this iteration.
+No schema, callback name, ownership rule, or deployment changed.
+No background services were started.
+Checkpoint: `.gnhf/checkpoints/iteration-2-terminal-callback.patch`.
+Further Temporal delivery recovery, coaching alignment, and native narrow-phone verification remain in scope, so the loop stop condition is not met.
+
 ## Completed work
 
 - Phase 1: completed-result retry, refreshed signed-link recovery for video and motion, bounded and cancellable motion download, and repaired native test interactions.

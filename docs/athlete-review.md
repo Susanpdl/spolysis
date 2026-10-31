@@ -30,6 +30,12 @@ The same token succeeds after isolated upstream recovery.
 See [Overnight handoff](overnight-handoff.md) for baseline evidence and validation limits.
 No native UI or production authentication claim is made by these checks.
 
+Iteration 2 reproduced completion overwriting a concurrent failure or rejection through the HTTP callback lifecycle.
+Completion now guards its status write, returns HTTP 409 if the terminal callback wins, and preserves the athlete-visible terminal message and result-access gate.
+All 36 Python tests pass, including both callback orderings and duplicate completion compatibility.
+The isolated database adapter establishes handler behavior, not deployed database concurrency; the existing separate result write can leave an inaccessible row.
+See [Overnight handoff](overnight-handoff.md) for baseline evidence and the deferred transactional option.
+
 ## Journey covered
 
 The native fixture journey completed history, playback of an existing R2 pipeline overlay, 3D playback/pause/rotation/reset, stroke and hand selection, library import, native upload, result sharing, account review, and sign-out.

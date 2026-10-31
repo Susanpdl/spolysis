@@ -182,3 +182,10 @@ HTTP regression checks verify that excess requests create no jobs or signed link
 All 68 Python tests and Ruff pass.
 The limiter is process-local; production proxy addressing and enforcement across replicas remain unverified.
 This is isolated API validation, not a production load test or native UI check.
+
+## Continuation setup guidance
+
+Continuation run bfd94b iteration 6 aligns README onboarding with the current welcome and empty-home button labels and includes migration 004 in rollout prerequisites.
+The current-status guidance now reflects the previously recorded connectivity recovery without claiming production sign-in or database validation.
+Verification is a source/document comparison and a clean diff check, not a new native journey or production service check.
+The old welcome selectors in `SmokeTests.swift` remain a known local follow-up; historical native passes do not validate the current landing screen.

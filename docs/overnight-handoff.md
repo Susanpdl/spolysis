@@ -406,3 +406,17 @@ Production proxy address handling and aggregate multi-replica enforcement are no
 No app files, generated Fly configuration, or orchestrator notes were changed; no background services, commits, deployment, or production writes were made.
 Workflow timeouts, analyzed-window clarity, and import/recovery/privacy guidance remain local follow-up work.
 Captain verification remains required for the live Fly worker, private R2 access, migrations 001-004, a real signed-in job, and the tennis-analysis poller.
+
+## Continuation bfd94b iteration 6: setup and release prerequisites
+
+README onboarding now names the current welcome and empty-home actions, verified against `WelcomeScreen.tsx` and `HomeScreen.tsx` without changing either screen.
+The setup and implementation status now include migration 004: `JobPremiumCompleteRequest` includes `fault_phase`, and `complete_premium_job` upserts the complete model into `results`.
+Omitting that migration leaves the documented deployment procedure incompatible with current callbacks.
+The current-status guidance distinguishes the later user-supplied health checks from the older DNS outage and from still-unverified production sign-in and persistence.
+README now states the captain's remaining worker, poller, private-storage, migration, and real-job verification requirements.
+
+This is a documentation-only slice, checked against repository source and dated audit evidence; `git diff --check` passes.
+No runtime tests or new service-health checks were run, and no native or production validation is claimed.
+No background processes, commits, production changes, or orchestrator-note edits were made.
+Local follow-up remains for workflow timeouts, analyzed-window clarity, import/recovery/privacy guidance, and obsolete native test selectors.
+In particular, `SmokeTests.swift` still expects the replaced welcome copy and needs a separately verified native test update.

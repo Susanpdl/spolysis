@@ -91,11 +91,11 @@ Authentication and job completion in these screenshots use the local fixture, no
 
 ## External requirements and limits
 
-The configured Supabase project hostname does not resolve from both the development machine and the deployed Fly backend.
-The Supabase account must be restored or connected before real authentication, database migration, and a production signed-in device test can be finished.
-The Supabase integration was located, but account authorization remains a user action.
+The earlier Supabase DNS failure was superseded by user-supplied GoTrue and Fly health HTTP 200 checks on 2026-10-30 at 21:58 America/New_York, as recorded in [Athlete review](athlete-review.md).
+Those checks establish connectivity only; real authentication, applied migrations, and production signed-in persistence remain unverified.
+Captain access is required to verify these release prerequisites.
 
-The API and worker deployment depends on migration `api/migrations/003_3d_analysis.sql` and valid Supabase settings.
+The API and worker deployment depends on migrations `api/migrations/001_init.sql` through `api/migrations/004_result_fault_phase.sql` and valid Supabase settings.
 The worker also needs Modal credentials in Fly secrets.
 Deploy from the repository root with `fly deploy --config fly.runtime.toml` after those prerequisites are satisfied.
 The existing generated `api/fly.toml` is retained without manual modification.

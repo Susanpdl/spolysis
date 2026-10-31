@@ -21,12 +21,14 @@ const steps = [
   },
 ];
 
-export function GettingStarted() {
+export function GettingStarted({ embedded = false }: { embedded?: boolean }) {
   return (
-    <View style={styles.card}>
-      <Text accessibilityRole="header" style={styles.heading}>
-        Your first analysis
-      </Text>
+    <View style={[styles.card, embedded && styles.embedded]}>
+      {!embedded && (
+        <Text accessibilityRole="header" style={styles.heading}>
+          Your first analysis
+        </Text>
+      )}
       {steps.map((step, index) => (
         <View key={step.title} style={styles.step}>
           <View style={styles.numberBadge}>
@@ -52,8 +54,16 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
   },
   heading: { ...typography.h3, color: colors.text.primary },
+  embedded: {
+    alignSelf: "stretch",
+    padding: 0,
+    borderWidth: 0,
+    borderRadius: 0,
+    backgroundColor: "transparent",
+  },
   step: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
   numberBadge: {
+    flexShrink: 0,
     minWidth: 28,
     minHeight: 28,
     padding: spacing.xs,

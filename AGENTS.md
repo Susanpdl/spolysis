@@ -3,6 +3,7 @@
 Read [CLAUDE.md](CLAUDE.md) for shared project context and engineering constraints.
 Use [README.md](README.md) for setup and checks, and [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) for recorded validation and release blockers.
 Proposals in [v2.md](v2.md) require the user's choice before implementation.
+Read [docs/SESSION_HANDOFF.md](docs/SESSION_HANDOFF.md) for recent user decisions and unfinished session work; verify its snapshot against the current working tree.
 
 - Never use the em dash character; use a plain dash.
 - Never add an agent co-author to commit messages.

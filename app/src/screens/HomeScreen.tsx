@@ -196,7 +196,7 @@ export default function HomeScreen() {
                     ? "Check your connection, then refresh your analyses."
                     : "Choose a stroke, record or import a clip, and explore your movement in 3D."}
                 </Text>
-                {!query.isError ? <GettingStarted /> : null}
+                {!query.isError ? <GettingStarted embedded /> : null}
                 <Button
                   title={query.isError ? "Retry" : "Choose a sport"}
                   loading={query.isError && query.isFetching}

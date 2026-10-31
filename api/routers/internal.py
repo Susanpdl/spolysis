@@ -58,6 +58,16 @@ def complete_premium_job(job_id: str, body: JobPremiumCompleteRequest):
 @router.post("/jobs/{job_id}/fail")
 def fail_job(job_id: str, body: JobFailRequest):
     _job(job_id)
+    # Completion may have persisted its result before its status write failed.
+    # Leave that outcome recoverable by the idempotent completion callback.
+    if (
+        service_client.table("results")
+        .select("job_id")
+        .eq("job_id", job_id)
+        .execute()
+        .data
+    ):
+        return {"status": "ok"}
     service_client.table("jobs").update(
         {
             "status": "failed",

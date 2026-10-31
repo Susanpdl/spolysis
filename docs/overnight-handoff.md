@@ -373,3 +373,20 @@ The longer lifetime also extends the validity of the private upload capability t
 No app files changed, no background process was started, and no commit or deployment was made.
 Ranked local work remains, including analyzed-window clarity, import/recovery/privacy guidance, completion notification safety, workflow timeouts, and public endpoint hardening.
 Captain verification remains required for the live Fly worker, private R2 configuration, migrations 001-004, a real signed-in job, and the tennis-analysis Temporal poller.
+
+## Continuation bfd94b iteration 4: preserve analysis outcomes
+
+The baseline HTTP regression saved a result, injected a completion status-write outage, then delivered the workflow's failure callback.
+The athlete-facing job status incorrectly became failed, preventing completion recovery.
+`fail_job` now no-ops when a result row exists, and the HTTP regression verifies successful completion retry and result access after recovery.
+The previous terminal-callback race regression now injects failure/rejection before result persistence, preserving the rule that an earlier terminal outcome cannot be revived.
+Completion and rejection delivery now execute outside the workflow's analysis-failure handler.
+Four isolated workflow branch checks establish that only processing/analysis activity errors trigger the failure callback; they do not execute Temporal scheduling or retry behavior.
+
+Validation: `.venv-test/bin/python -m pytest -q` passes all 64 tests; `.venv-test/bin/python -m ruff check api pipeline tests`, changed-Python Ruff formatting, and `git diff --check` pass.
+No app changes, background processes, commits, deployment, or production writes were made.
+The result-existence check and status mutation remain separate operations, so this is not a transactional concurrency guarantee.
+An exhausted completion/rejection delivery still leaves the workflow failed and may leave the job processing; operational callback redelivery remains necessary.
+Production rollout must account for existing Temporal histories; no live workflow replay or reset was performed.
+Worker liveness/timeouts, remaining app guidance, and public API hardening remain available local follow-up work.
+Captain verification remains required for the live Fly worker, private R2 access, migrations 001-004, a real signed-in job, and the tennis-analysis poller.

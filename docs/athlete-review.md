@@ -165,3 +165,12 @@ HTTP issuance tests use real local signing and preserve pending-job ownership an
 All 59 Python tests and Ruff pass, including existing confirmation-time size and file-type rejection checks.
 This validates the URL contract without production storage access; it does not establish cellular transfer reliability or in-flight expiry behavior.
 Physical-device transfer interruption and app-termination recovery remain unverified.
+
+## Continuation completion delivery
+
+Continuation run bfd94b iteration 4 reproduces a saved result becoming failed after its completion status write returns HTTP 500.
+The failure callback now leaves a job with a saved result unchanged, allowing a repeated completion callback to restore result access.
+Workflow completion and rejection delivery errors no longer invoke the analysis-failure callback; processing and analysis errors still do.
+All 64 Python tests and Ruff pass, including HTTP partial-completion recovery and isolated workflow branch checks.
+These checks do not run a Temporal server or establish production database concurrency.
+Exhausted delivery retries still require operational callback recovery; the job can remain processing until delivery succeeds.

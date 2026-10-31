@@ -35,16 +35,6 @@ class TennisAnalysisWorkflow:
                     maximum_attempts=2, initial_interval=timedelta(seconds=30)
                 ),
             )
-            if result.get("status") == "rejected":
-                path, body = "reject", {"rejection_reason": result["reason"]}
-            else:
-                path, body = "complete_premium", result
-            await workflow.execute_activity(
-                notify_api,
-                args=[f"/internal/jobs/{job_id}/{path}", body],
-                start_to_close_timeout=timedelta(seconds=60),
-                retry_policy=_RETRY,
-            )
         except ActivityError:
             workflow.logger.exception("Analysis failed for %s", job_id)
             await workflow.execute_activity(
@@ -57,3 +47,16 @@ class TennisAnalysisWorkflow:
                 retry_policy=_RETRY,
             )
             raise
+
+        # Delivery failure does not mean analysis failed. Preserve the outcome
+        # for callback retry instead of replacing it with a failure callback.
+        if result.get("status") == "rejected":
+            path, body = "reject", {"rejection_reason": result["reason"]}
+        else:
+            path, body = "complete_premium", result
+        await workflow.execute_activity(
+            notify_api,
+            args=[f"/internal/jobs/{job_id}/{path}", body],
+            start_to_close_timeout=timedelta(seconds=60),
+            retry_policy=_RETRY,
+        )

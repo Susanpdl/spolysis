@@ -416,14 +416,13 @@ def test_completion_cannot_overwrite_concurrent_terminal_callback(
     execute = Query.execute
 
     def interleaved_execute(query):
-        result = execute(query)
         if query.name == "results" and query.action == "upsert":
-            # A second worker callback lands after the initial status read.
+            # A terminal callback wins before the result is persisted.
             response = c.post(
                 f"/internal/jobs/{job}/{terminal}", json=body, headers=headers
             )
             assert response.status_code == 200
-        return result
+        return execute(query)
 
     monkeypatch.setattr(Query, "execute", interleaved_execute)
     response = c.post(
@@ -597,3 +596,52 @@ def test_upload_url_allows_one_hour_before_expiry(client, monkeypatch, content_t
     assert db.rows["jobs"][0]["user_id"] == "alice"
     assert db.rows["jobs"][0]["status"] == "pending"
     uploads.start_analysis_workflow.assert_not_awaited()
+
+
+def test_saved_result_survives_completion_status_failure(client, monkeypatch):
+    c, db = client
+    job = create(c)
+    headers = {"Authorization": f"Bearer {settings.internal_api_secret}"}
+    c.post(f"/internal/jobs/{job}/processing", headers=headers)
+    result = {
+        "stroke_type": "serve",
+        "confidence": 0.9,
+        "recommendation": "Review",
+        "overlay_video_url": "overlay",
+        "skeleton_3d_url": "skeleton",
+        "delta_summary": {},
+        "fault_joints": [],
+    }
+    execute = Query.execute
+
+    def fail_status_write(query):
+        if query.name == "jobs" and query.payload == {
+            "status": "completed",
+            "error_message": None,
+        }:
+            raise RuntimeError("database unavailable")
+        return execute(query)
+
+    monkeypatch.setattr(Query, "execute", fail_status_write)
+    assert (
+        c.post(
+            f"/internal/jobs/{job}/complete_premium", json=result, headers=headers
+        ).status_code
+        == 500
+    )
+    assert len(db.rows["results"]) == 1
+    response = c.post(
+        f"/internal/jobs/{job}/fail",
+        json={"error_message": "Analysis could not finish. Retry this clip."},
+        headers=headers,
+    )
+    assert response.status_code == 200
+    assert c.get(f"/jobs/{job}").json()["status"] == "processing"
+    monkeypatch.setattr(Query, "execute", execute)
+    assert (
+        c.post(
+            f"/internal/jobs/{job}/complete_premium", json=result, headers=headers
+        ).status_code
+        == 200
+    )
+    assert c.get(f"/jobs/{job}/result").status_code == 200

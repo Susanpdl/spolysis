@@ -5,9 +5,10 @@ import {
   StyleSheet,
   ActivityIndicator,
   ScrollView,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useIsFocused } from "@react-navigation/native";
+import { useIsFocused, usePreventRemove } from "@react-navigation/native";
 import { useQueryClient } from "@tanstack/react-query";
 import { RecordingScreenProps } from "@/navigation/types";
 import { ProgressBar } from "@/components/ProgressBar";
@@ -33,6 +34,7 @@ export default function UploadProgressScreen({
   const [videoUnavailable, setVideoUnavailable] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const uploaded = useRef<string | null>(null);
+  const leavePrompt = useRef(false);
   const {
     job,
     result,
@@ -140,6 +142,35 @@ export default function UploadProgressScreen({
       setStarting(false);
     }
   };
+  const transferring = stage === "upload" && !error;
+  usePreventRemove(transferring, ({ data }) => {
+    if (leavePrompt.current) return;
+    leavePrompt.current = true;
+    Alert.alert(
+      "Leave this upload?",
+      "Your video is still transferring. Leaving now stops the upload. Analysis starts after a complete transfer.",
+      [
+        {
+          text: "Keep uploading",
+          style: "cancel",
+          onPress: () => {
+            leavePrompt.current = false;
+          },
+        },
+        {
+          text: "Leave",
+          style: "destructive",
+          onPress: () => navigation.dispatch(data.action),
+        },
+      ],
+      {
+        cancelable: true,
+        onDismiss: () => {
+          leavePrompt.current = false;
+        },
+      },
+    );
+  });
   const confirmationError = !!error && stage === "confirm" && !videoUnavailable;
   const awaitingStart = stage === "analysis" && job?.status === "pending";
   const canRetryStart =
@@ -192,6 +223,13 @@ export default function UploadProgressScreen({
           </Text>
           <Text style={styles.text}>{message}</Text>
           {stage === "upload" && !error && <ProgressBar progress={progress} />}
+          {transferring && (
+            <Button
+              title="Cancel upload"
+              variant="secondary"
+              onPress={() => navigation.goBack()}
+            />
+          )}
           {!error &&
             !failed &&
             !resultUnavailable &&

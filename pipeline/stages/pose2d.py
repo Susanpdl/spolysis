@@ -20,11 +20,37 @@ class Pose2DResult:
     bboxes: np.ndarray  # (T, 4) - x1, y1, x2, y2 of player crop
 
 
+def _require_baked_rtmpose() -> None:
+    missing = [
+        path for path in (_BAKED_CONFIG, _BAKED_WEIGHTS) if not os.path.isfile(path)
+    ]
+    if missing:
+        raise RuntimeError(
+            "The trained RTMPose-x checkpoint is missing: "
+            + ", ".join(missing)
+            + ". Analysis cannot substitute another pose model."
+        )
+
+
+def _build_rtmpose_inferencer(inferencer_cls, config: str, weights: str):
+    """Load the baked RTMPose-x checkpoint, falling back to CPU for the same files."""
+    try:
+        return inferencer_cls(pose2d=config, pose2d_weights=weights, device="cuda")
+    except Exception:
+        log.warning("cuda_unavailable_falling_back_to_cpu")
+        return inferencer_cls(pose2d=config, pose2d_weights=weights, device="cpu")
+
+
 def run_pose_estimation(frame_dir: str) -> Pose2DResult:
-    """
-    Run RTMPose-x on all frames in frame_dir.
-    Uses MMPoseInferencer which auto-downloads weights on first run.
-    """
+    """Run the baked RTMPose-x checkpoint on every frame in frame_dir."""
+    frame_paths = sorted(
+        os.path.join(frame_dir, f) for f in os.listdir(frame_dir) if f.endswith(".jpg")
+    )
+    if not frame_paths:
+        raise ValueError(f"No frames found in {frame_dir}")
+
+    _require_baked_rtmpose()
+
     try:
         from mmpose.apis import MMPoseInferencer
     except ImportError:
@@ -33,40 +59,15 @@ def run_pose_estimation(frame_dir: str) -> Pose2DResult:
             "Use the GPU image defined in pipeline/app.py for pinned model weights."
         )
 
-    frame_paths = sorted(
-        os.path.join(frame_dir, f) for f in os.listdir(frame_dir) if f.endswith(".jpg")
-    )
-    if not frame_paths:
-        raise ValueError(f"No frames found in {frame_dir}")
-
     log.info("pose_estimation_start", frame_count=len(frame_paths))
-
-    if os.path.isfile(_BAKED_CONFIG) and os.path.isfile(_BAKED_WEIGHTS):
-        pose2d_arg = _BAKED_CONFIG
-        weights_arg = _BAKED_WEIGHTS
-        log.info(
-            "rtmpose_using_baked_checkpoint",
-            config=_BAKED_CONFIG,
-            weights=_BAKED_WEIGHTS,
-        )
-    else:
-        log.warning("rtmpose_baked_checkpoint_missing_falling_back_to_metafile")
-        pose2d_arg = "rtmpose-l_8xb256-420e_coco-256x192"
-        weights_arg = None
-
-    try:
-        inferencer = MMPoseInferencer(
-            pose2d=pose2d_arg,
-            pose2d_weights=weights_arg,
-            device="cuda",
-        )
-    except Exception:
-        log.warning("cuda_unavailable_falling_back_to_cpu")
-        inferencer = MMPoseInferencer(
-            pose2d=pose2d_arg,
-            pose2d_weights=weights_arg,
-            device="cpu",
-        )
+    log.info(
+        "rtmpose_using_baked_checkpoint",
+        config=_BAKED_CONFIG,
+        weights=_BAKED_WEIGHTS,
+    )
+    inferencer = _build_rtmpose_inferencer(
+        MMPoseInferencer, _BAKED_CONFIG, _BAKED_WEIGHTS
+    )
 
     all_keypoints = []
     all_bboxes = []

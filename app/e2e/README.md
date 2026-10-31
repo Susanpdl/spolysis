@@ -1,7 +1,8 @@
 # Native UI checks
 
 These tests drive the installed iOS app through XCTest.
-`SmokeTests` checks the welcome, sign-up, and sign-in screens.
+`SmokeTests` checks the current storybook welcome screen, its Find your next move action, and the sign-up and sign-in screens.
+Welcome navigation uses Sign in ↗; form submission uses Sign in.
 `SignedInTests` uses an isolated local HTTP fixture and actual pipeline media to exercise history, result playback, the 3D viewer, recording setup, library import, native upload, file sharing, and sign-out.
 `ResultRecoveryTests` checks result and media failures, signed-link refresh recovery, switching between unfinished analyses, pending-job restart from history, and confirmation retry without uploading twice.
 It also covers failed history polls with cached rows, unavailable initial history, genuinely empty history, and second-page recovery.
@@ -75,7 +76,7 @@ Transfer recovery waits for the native video-ready state before capturing its re
 `/__test/jobs` seeds distinct statuses and supports actual 20-row pagination.
 `/__test/state` supplies upload, confirmation, and additional-page request counters for recovery assertions.
 The `history` and `history_page` failure switches independently interrupt the list and additional pages.
-The `upload` switch returns a transfer failure; `missing_upload` returns the confirmation endpoint's missing-or-invalid response.
+The `upload` switch returns a transfer failure; `upload_hang` delays the transfer response so an in-progress leave warning can be checked; `missing_upload` returns the confirmation endpoint's missing-or-invalid response.
 The `logout` switch returns an auth-service 503.
 The `short_session` switch issues a one-second access token; `refresh_rejected` rejects automatic token refresh with a non-retryable revoked-token response.
 The real auth SDK performs expiry and session removal; these controls do not simulate production account revocation or device airplane mode.

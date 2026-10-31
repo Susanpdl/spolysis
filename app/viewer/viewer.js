@@ -591,7 +591,16 @@ window.setSkeleton = (payload) => {
     );
     racketPathGeometry.computeBoundingSphere();
 
-    frame = 0;
+    // Contact is an estimated phase within this window, not a source-video index.
+    frame =
+      Number.isInteger(data.contact_frame) &&
+      data.contact_frame >= 0 &&
+      data.contact_frame < data.frames.length
+        ? data.contact_frame
+        : 0;
+    playing = false;
+    accumulator = 0;
+    play.textContent = "Play";
     scrub.max = data.frames.length - 1;
     drawFrame();
   } catch (error) {

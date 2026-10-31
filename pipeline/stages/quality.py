@@ -57,8 +57,7 @@ def check_quality(
         log.info("quality_fail_blur", mean_blur=mean_blur, threshold=BLUR_THRESHOLD)
         return QualityResult(
             passed=False,
-            reason=f"Video is too blurry (sharpness score {mean_blur:.1f}, minimum {BLUR_THRESHOLD}). "
-            "Try recording in better lighting or ensure the camera is stable.",
+            reason="Video is too blurry. Try recording in better lighting or keep the camera stable.",
         )
 
     T = keypoints.shape[0]

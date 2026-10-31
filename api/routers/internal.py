@@ -40,9 +40,17 @@ def complete_premium_job(job_id: str, body: JobPremiumCompleteRequest):
     service_client.table("results").upsert(
         {"job_id": job_id, **body.model_dump()}, on_conflict="job_id"
     ).execute()
-    service_client.table("jobs").update(
-        {"status": "completed", "error_message": None}
-    ).eq("id", job_id).execute()
+    # Recheck in the write itself: another callback may have failed or rejected
+    # the job while the result was being saved. Never revive a terminal job.
+    updated = (
+        service_client.table("jobs")
+        .update({"status": "completed", "error_message": None})
+        .eq("id", job_id)
+        .in_("status", ["pending", "processing", "completed"])
+        .execute()
+    )
+    if not updated.data:
+        raise HTTPException(409, "Job is already terminal")
     invalidate_job_cache(job_id)
     return {"status": "ok"}
 
@@ -50,6 +58,16 @@ def complete_premium_job(job_id: str, body: JobPremiumCompleteRequest):
 @router.post("/jobs/{job_id}/fail")
 def fail_job(job_id: str, body: JobFailRequest):
     _job(job_id)
+    # Completion may have persisted its result before its status write failed.
+    # Leave that outcome recoverable by the idempotent completion callback.
+    if (
+        service_client.table("results")
+        .select("job_id")
+        .eq("job_id", job_id)
+        .execute()
+        .data
+    ):
+        return {"status": "ok"}
     service_client.table("jobs").update(
         {
             "status": "failed",

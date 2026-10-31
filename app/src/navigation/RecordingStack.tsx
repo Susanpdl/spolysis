@@ -24,6 +24,7 @@ export function RecordingStack() {
         name="UploadProgress"
         component={UploadProgressScreen}
         getId={({ params }) => params.jobId ?? params.videoUri}
+        options={{ headerBackButtonMenuEnabled: false }}
       />
       <Stack.Screen
         name="Result"

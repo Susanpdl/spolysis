@@ -7,7 +7,7 @@ This is a reviewable development candidate, not a production release assertion.
 
 | Severity | Issue and athlete impact | Reproduction and evidence | Implemented fix | Verification and limits |
 | --- | --- | --- | --- | --- |
-| P0 external | Production sign-in unavailable; real accounts and saved analyses blocked | Both configured Supabase hostnames fail local DNS resolution on 2026-10-30 | No production changes | Owner restoration required before real authentication and database validation |
+| P0 validation | Production sign-in and database writes remain unverified | Earlier DNS failure was superseded by user-supplied Supabase GoTrue and Fly health HTTP 200 checks at 2026-10-30 21:58 America/New_York | No production changes | Connectivity alone does not validate authentication or persistence |
 | P1 | Completed analysis misleadingly says reconstruction is ongoing when result retrieval fails | Native processing history item becomes completed, result endpoint returns 503, spinner persists; `.gnhf/evidence/completion-before.png` | Distinguish completed-result loading and failure; retry saved result without upload; keep return-to-history action | Native completion-failure recovery passes in the consolidated suite; local fixture only |
 | P1 | Video and 3D download failures leave text instructing a reload without an action | Native fixture returns 503 for actual pipeline media; baseline recovery tests fail because retry controls are absent | Visible media retry fetches fresh signed links and remounts failed video even if URL is unchanged; bounded motion download with cancellation; refresh errors remain retryable | Native media and refresh-failure recovery passes; actual signed-link expiry timing still untested |
 | P1 | Selecting another unfinished analysis keeps showing the previous job, including hiding a rejection | Open a processing row, return to analyses, open a rejected row; the native screen still reconstructs the first job; `.gnhf/evidence/phase2-wrong-job-before.png` | Navigation identifies progress screens by job or clip and result screens by job; completion navigation runs only for the focused progress screen | Native regression covers switching to a rejected job and returning to capture |
@@ -21,6 +21,20 @@ This is a reviewable development candidate, not a production release assertion.
 | P2 | Automatic session removal and sign-out service failure retain the prior session's in-memory analysis queries | Corrected native baselines re-enter the same account during a history outage without restarting JavaScript; the old row and total remain visible; `.gnhf/evidence/phase5-baseline` | Clear queries at the shared removed-or-changed-session boundary before publishing identity changes; preserve same-athlete token refreshes | Both new session checks pass in the 15-of-16 consolidated run; the failed pagination check then passes twice; no cross-account disclosure is established |
 | P2 | Sign-out service error says the athlete is still signed in after local credentials are removed | Native auth logout returns 503; welcome appears with Could not sign out | Explain local sign-out and unconfirmed remote revocation separately; disable duplicate submissions | Native sign-out outage and re-entry check passes; does not claim other sessions were revoked |
 | P2 validation | Native checks drop 150 ms long presses on welcome and history | Original smoke and signed-in checks fail before navigation or a result request; ordinary taps complete the full signed-in journey | Ordinary taps, hittability wait, and password-dialog handling in native checks | Signed-out smoke passes in consolidated regression |
+
+## Current GNHF backend verification
+
+Run `objective-make-spoly-e894a3`, iteration 1, reproduced eight authentication-service failures being mislabeled as invalid credentials through protected HTTP requests and the real GoTrue SDK.
+Service failures now return retryable HTTP 503 without authorizing requests or creating jobs; rejected credentials remain HTTP 401.
+The same token succeeds after isolated upstream recovery.
+See [Overnight handoff](overnight-handoff.md) for baseline evidence and validation limits.
+No native UI or production authentication claim is made by these checks.
+
+Iteration 2 reproduced completion overwriting a concurrent failure or rejection through the HTTP callback lifecycle.
+Completion now guards its status write, returns HTTP 409 if the terminal callback wins, and preserves the athlete-visible terminal message and result-access gate.
+All 36 Python tests pass, including both callback orderings and duplicate completion compatibility.
+The isolated database adapter establishes handler behavior, not deployed database concurrency; the existing separate result write can leave an inaccessible row.
+See [Overnight handoff](overnight-handoff.md) for baseline evidence and the deferred transactional option.
 
 ## Journey covered
 
@@ -128,3 +142,114 @@ No secure-erasure or account-deletion claim is made.
 5. Consolidate the final native regression evidence after these cohesive phases.
 
 Physical camera behavior, Android runtime, distribution signing, production database writes, external account access, and model accuracy remain separate unverified claims.
+
+## Continuation confirmation recovery
+
+Continuation run bfd94b iteration 1 reproduces Temporal connect/start outages and post-start metadata failure through protected HTTP confirmation requests.
+Orchestration outages now return retryable 503 with saved-video reuse guidance; metadata failure after successful workflow acceptance no longer falsely reports that analysis failed to start.
+All 49 Python tests pass, including recovery and processing callbacks without saved workflow metadata; Ruff passes.
+These are isolated service-adapter tests, not native UI or production signed-in validation.
+
+## Continuation result availability
+
+Continuation run bfd94b iteration 2 reproduces completed-result HTTP 200 responses for missing, empty, and unavailable storage artifacts, and HTTP 500 for signing failure.
+Result fetch now verifies nonempty stored artifacts before issuing private links and returns retryable HTTP 503 when media or signing is unavailable.
+Ownership is checked before any storage access; the completed job remains completed so the athlete can retry loading its result.
+All 57 Python tests and Ruff pass, including overlay and skeleton failure/recovery checks and unauthorized access without storage calls.
+These are isolated HTTP/storage-adapter checks, not production R2 or native UI validation.
+
+## Continuation upload lifetime
+
+Continuation run bfd94b iteration 3 increases private upload URL validity from five minutes to one hour for the supported MP4 and MOV flows.
+HTTP issuance tests use real local signing and preserve pending-job ownership and signed content-type binding.
+All 59 Python tests and Ruff pass, including existing confirmation-time size and file-type rejection checks.
+This validates the URL contract without production storage access; it does not establish cellular transfer reliability or in-flight expiry behavior.
+Physical-device transfer interruption and app-termination recovery remain unverified.
+
+## Continuation completion delivery
+
+Continuation run bfd94b iteration 4 reproduces a saved result becoming failed after its completion status write returns HTTP 500.
+The failure callback now leaves a job with a saved result unchanged, allowing a repeated completion callback to restore result access.
+Workflow completion and rejection delivery errors no longer invoke the analysis-failure callback; processing and analysis errors still do.
+All 64 Python tests and Ruff pass, including HTTP partial-completion recovery and isolated workflow branch checks.
+These checks do not run a Temporal server or establish production database concurrency.
+Exhausted delivery retries still require operational callback recovery; the job can remain processing until delivery succeeds.
+
+## Continuation public API protection
+
+Continuation run bfd94b iteration 5 disables public API documentation routes and limits new upload URL requests to 10 per minute per client address.
+HTTP regression checks verify that excess requests create no jobs or signed links, while saved-video confirmation and job reads remain available.
+All 68 Python tests and Ruff pass.
+The limiter is process-local; production proxy addressing and enforcement across replicas remain unverified.
+This is isolated API validation, not a production load test or native UI check.
+
+## Continuation setup guidance
+
+Continuation run bfd94b iteration 6 aligns README onboarding with the current welcome and empty-home button labels and includes migration 004 in rollout prerequisites.
+The current-status guidance now reflects the previously recorded connectivity recovery without claiming production sign-in or database validation.
+Verification is a source/document comparison and a clean diff check, not a new native journey or production service check.
+The old welcome selectors in `SmokeTests.swift` remain a known local follow-up; historical native passes do not validate the current landing screen.
+
+## Continuation native test compatibility
+
+Continuation run bfd94b iteration 7 updates welcome, sign-out, session recovery, and empty-history selectors to the current approved copy without changing product screens or artwork.
+The native build also exposed two shared navigation helpers scoped privately to the recovery class; they now live in a file-local XCTestCase extension so both test classes compile.
+The generated test project passes simulator build-for-testing for arm64 and x86_64.
+All 68 Python tests, Ruff, app TypeScript, ESLint, and diff checks pass.
+CoreSimulator access fails in this sandbox with connection refused and Operation not permitted, so no native test execution or new screenshots are claimed.
+A simulator run remains necessary to verify accessibility labels and navigation at runtime.
+
+## Continuation workflow wait bounds
+
+Continuation run bfd94b iteration 8 adds five-minute activity queue-wait limits and a two-hour execution limit for new analysis workflows.
+All 72 Python tests and Ruff pass, including HTTP workflow-start options and isolated timeout-failure branches.
+Analysis activity failure requests retrying the same clip; a result-delivery failure does not overwrite successful analysis with recapture guidance.
+No real Temporal timeout or native UI behavior was exercised.
+A completely absent worker cannot deliver any status callback, and workflow execution timeout alone does not change the athlete's database status.
+Live worker and poller verification and stranded-job recovery remain captain responsibilities.
+
+## Continuation history failure reasons
+
+Continuation run bfd94b iteration 9 exposes saved rejection and service-failure reasons directly in history rows and their accessibility labels.
+The reason occupies the card width below the summary and is not truncated; completed and active jobs do not display stale failure text.
+A local render probe reproduced the missing reason before the change and passes afterward, including missing-reason compatibility.
+The native selected-rejection test now asserts the history button's reason before navigating, and the simulator test target builds successfully.
+All 72 Python tests, Ruff, TypeScript, ESLint, and changed-screen formatting pass.
+CoreSimulator remains inaccessible in this sandbox, so these checks do not establish native layout, VoiceOver behavior, or a runtime UI-test pass.
+
+## Continuation estimated-phase viewer entry
+
+Continuation run bfd94b iteration 10 opens the motion viewer paused at the supplied estimated contact phase instead of always at frame zero.
+Historical results without valid phase metadata still open at frame zero.
+An isolated execution of the actual viewer load handler reproduces the old behavior and verifies the fix, boundary values, invalid metadata, and playback reset.
+All 72 Python tests, Ruff, TypeScript, ESLint, and the viewer build pass.
+CoreSimulator and browser access remain blocked, so native interaction and visual presentation are unverified.
+The phase is a wrist-motion estimate, not detected ball contact; analyzed-window timing and automatic selection explanation remain follow-up work.
+
+## Continuation account data disclosure
+
+Continuation run e1101d iteration 1 explains cloud upload and analysis, states that sign-out does not delete uploaded videos, results, or the account, and discloses that deletion is unavailable in the app.
+The account screen no longer labels storage "Private by default" while production R2 public-access configuration remains unverified.
+Source review confirms that the app sign-out service only calls Supabase sign-out and the API exposes no recording or account deletion route.
+All 72 Python tests, Ruff, app TypeScript, ESLint, and changed-screen formatting pass.
+The Python suite emits existing Starlette/httpx and gotrue deprecation warnings.
+An attempted native check failed before launch because `xcrun simctl list devices booted` could not connect to CoreSimulatorService and reported Operation not permitted accessing its log.
+No native reproduction, screenshot, layout validation, or production privacy validation is claimed.
+Import guidance and upload navigation protection were added later.
+The iPhone 17e empty-home layout check is recorded below.
+
+## Continuation analyzed-window copy
+
+Continuation run e1101d iteration 3 explains on the result screen that the reviewed motion is the strongest racket-arm-speed window the analysis selected, not a swing the player marked.
+The 3D guide states that the viewer opens paused at estimated contact inferred from wrist motion, not detected ball impact.
+The coaching limits line still rejects millimetre and clinical claims.
+No `start_frame` field was added to the public result schema, and viewer seek logic still uses `contact_frame` only.
+This is copy-only; it does not change swing selection, reconstruction, or seek behavior.
+App TypeScript and ESLint are the recorded checks for this slice.
+CoreSimulator remains inaccessible here, so native layout, VoiceOver, and screenshot validation are not claimed.
+
+## iPhone 17e empty-home layout
+
+On iPhone 17e at default Dynamic Type, the signed-in empty-home Choose a sport control is above the fold at 390x844.
+At extra-extra-large Dynamic Type, body copy still scaled, number badges did not shrink, and Choose a sport stayed tappable without overflowing the card.
+These screenshots used fixture auth and worktree Metro 8082, not production sign-in.

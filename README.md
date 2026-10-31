@@ -15,7 +15,8 @@ Start with [Get started](#get-started) to set up the project and complete your f
 The 3D GPU pipeline is deployed on Modal and has processed real THETIS forehand, backhand, serve, and volley videos through reconstruction, comparison, correction, and video rendering.
 The app and API implementation are present, with validation evidence and release blockers in [Implementation status](docs/IMPLEMENTATION_STATUS.md).
 Android APK and standalone iOS simulator builds are available from that status page.
-Production sign-in and the final API rollout are blocked by an unavailable Supabase project.
+Production sign-in, database writes, and the final API rollout remain unverified.
+Later connectivity checks superseded the earlier Supabase DNS outage; see the dated evidence in [Athlete review](docs/athlete-review.md).
 Do not interpret this repository as an already released, validated consumer product.
 
 ## Architecture
@@ -77,7 +78,7 @@ cp -n app/.env.example app/.env
 
 Fill in `.env` with your Supabase, private R2, Upstash, Temporal, Modal, and internal API settings.
 Use a working Supabase project and apply the migrations listed under [Database and deployment](#database-and-deployment).
-The production Supabase outage recorded in [Implementation status](docs/IMPLEMENTATION_STATUS.md) must be resolved, or a working development project used, before sign-in can succeed.
+Use a working development project for local integration; successful health checks alone do not establish production sign-in or database readiness.
 
 Set these three values in `app/.env`:
 
@@ -141,8 +142,8 @@ Keep Metro running while using the development app.
 
 ### 5. Complete your first analysis
 
-1. Tap **Get Started** on the welcome screen to create an account, confirm your email if required, and sign in.
-2. On the empty analyses screen, tap **Start your first analysis**.
+1. Tap **Find your next move ↗** on the welcome screen to create an account, confirm your email if required, and sign in.
+2. On the empty analyses screen, tap **Choose a sport**.
 3. Choose Tennis, then choose your stroke type and playing hand.
 4. Record or import a video with your full body and racket in view.
 5. Wait for the upload and analysis to finish.
@@ -153,8 +154,11 @@ The fixture is for development only and does not validate production sign-in or 
 
 ## Database and deployment
 
-Apply `api/migrations/001_init.sql`, `002_premium_columns.sql`, and `003_3d_analysis.sql` in order through the Supabase SQL editor or an authenticated Postgres connection.
+Apply `api/migrations/001_init.sql`, `002_premium_columns.sql`, `003_3d_analysis.sql`, `004_result_fault_phase.sql`, and `005_result_fault_phases.sql` in order through the Supabase SQL editor or an authenticated Postgres connection.
 The third migration makes new jobs 3D-only and removes client write access to jobs and results.
+The fourth adds the optional primary-phase label written by current result callbacks; existing results remain readable.
+The fifth adds the optional per-joint phase map used by secondary coaching cues.
+Apply 004 and 005 before production completions write the new columns.
 Keep R2 public access disabled for uploads and result artifacts.
 
 Configure Fly secrets from `.env.example`, plus the workflow worker's `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET`.
@@ -169,6 +173,8 @@ fly deploy --config fly.runtime.toml
 Run these from the repository root after the database migrations succeed.
 `fly.runtime.toml` defines separate API and worker processes.
 The workflow worker must stay running to consume jobs.
+Before release, the captain must verify the live Fly worker, an active poller on the configured `tennis-analysis` queue, migrations 001-005, disabled R2 public access, and one real signed-in analysis through result retrieval.
+An API health response alone does not verify these requirements.
 See [Pipeline setup](pipeline/README.md) for model and data details.
 
 ## Checks

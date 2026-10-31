@@ -58,20 +58,27 @@ def apply_ik_correction(
 ) -> CorrectedSequence:
     original = user_skeleton.keypoints_3d
     out = original.copy()
+    primary = getattr(delta_table, "primary", None)
     supported = [
         j for j in delta_table.fault_joints if j in _CHAINS or j == "hip_rotation"
     ]
+    if primary is not None and (
+        primary.joint in _CHAINS or primary.joint == "hip_rotation"
+    ):
+        supported = [primary.joint] + [j for j in supported if j != primary.joint]
     if not supported:
         return CorrectedSequence(out, np.zeros(len(out), dtype=np.float32), [])
     weights = _build_blend_weights(len(out), *delta_table.fault_frames, ease_frames)
-    # Use the phase with the largest observed difference for each joint.
-    targets = {
-        j: max(
-            (d for d in delta_table.deltas if d.joint == j),
+    # Primary joint uses the chosen (joint, phase) pair; secondaries keep their peak.
+    targets = {}
+    for joint in supported:
+        if primary is not None and joint == primary.joint:
+            targets[joint] = primary
+            continue
+        targets[joint] = max(
+            (d for d in delta_table.deltas if d.joint == joint),
             key=lambda d: abs(d.delta_deg),
         )
-        for j in supported
-    }
     for t, weight in enumerate(weights):
         if weight == 0:
             continue

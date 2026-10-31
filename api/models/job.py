@@ -24,6 +24,7 @@ class JobResponse(BaseModel):
     status: str
     rejection_reason: str | None = None
     error_message: str | None = None
+    handedness: Literal["right", "left"] | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -38,6 +39,8 @@ class JobListResponse(BaseModel):
 class JobPremiumCompleteRequest(BaseModel):
     stroke_type: str
     fault_label: str | None = None
+    fault_phase: str | None = None
+    fault_phases: dict[str, str] | None = None
     confidence: float = Field(ge=0, le=1)
     recommendation: str
     overlay_video_url: str

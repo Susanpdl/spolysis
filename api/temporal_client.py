@@ -1,4 +1,5 @@
 from __future__ import annotations
+from datetime import timedelta
 from temporalio.client import Client
 from temporalio.exceptions import WorkflowAlreadyStartedError
 from api.config import settings
@@ -34,6 +35,8 @@ async def start_analysis_workflow(
             },
             id=workflow_id,
             task_queue=settings.temporal_task_queue,
+            # Covers two 35-minute attempts, queue waits, and callback retries.
+            execution_timeout=timedelta(hours=2),
         )
     except WorkflowAlreadyStartedError:
         pass

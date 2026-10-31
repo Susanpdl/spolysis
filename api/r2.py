@@ -26,8 +26,9 @@ def get_r2_client():
 
 
 def generate_upload_url(
-    r2_key: str, content_type: str = "video/mp4", expires_in: int = 300
+    r2_key: str, content_type: str = "video/mp4", expires_in: int = 3600
 ) -> str:
+    # Allow a longer upload/retry window for large clips on slow connections.
     client = get_r2_client()
     url = client.generate_presigned_url(
         "put_object",
@@ -42,7 +43,11 @@ def generate_upload_url(
 
 
 def generate_download_url(r2_key: str) -> str:
-    return get_r2_client().generate_presigned_url(
+    client = get_r2_client()
+    obj = client.head_object(Bucket=settings.r2_bucket_name, Key=r2_key)
+    if obj["ContentLength"] <= 0:
+        raise ValueError("Result artifact is empty.")
+    return client.generate_presigned_url(
         "get_object",
         Params={"Bucket": settings.r2_bucket_name, "Key": r2_key},
         ExpiresIn=3600,

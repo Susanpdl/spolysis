@@ -48,10 +48,16 @@ export default function ProfileScreen() {
           </Text>
         </View>
         <View style={styles.card}>
-          <Text style={styles.heading}>Private by default</Text>
+          <Text style={styles.heading}>Your recordings and data</Text>
           <Text style={styles.text}>
-            Your recordings and results are accessible through your account.
-            Sharing exports a video only when you choose to share it.
+            Videos you submit are uploaded for cloud analysis. Your account
+            gives you access to your recordings and results. Sharing exports a
+            video when you choose to share it.
+          </Text>
+          <Text style={styles.text}>
+            Signing out does not delete your uploaded videos, results, or
+            account. Deleting recordings or your account is not currently
+            available in the app.
           </Text>
         </View>
         <View style={styles.card}>
@@ -70,7 +76,7 @@ export default function ProfileScreen() {
           onPress={() =>
             Alert.alert(
               "Sign out?",
-              "Your completed analyses will remain in your account.",
+              "Signing out does not delete your uploaded videos, results, or account.",
               [
                 { text: "Cancel", style: "cancel" },
                 { text: "Sign out", onPress: logout },

@@ -2,11 +2,51 @@
 
 ## Current phase
 
-Iteration 5 implements shared session-boundary cleanup and truthful sign-out feedback during an auth-service outage.
-Static checks, native session checks, screenshot review, and process cleanup are complete.
-The consolidated run passes 15 of 16 tests; the simplified pagination check then passes twice, as detailed below.
-Work stays in `overnight/prepared`; no worker commits, pushes, deployment, production mutations, or additional agents.
-GNHF owns `notes.md`; checkpoint status goes in ignored iteration sidecars.
+Run `objective-make-spoly-e894a3`, iteration 1, hardens protected API requests during authentication-service outages.
+Work stays in the isolated GNHF worktree; no commits, pushes, deployment, production mutations, or additional agents.
+GNHF owns its run `notes.md`; this worker does not edit it.
+Earlier phases below describe the previous run and retain their original evidence.
+
+### Authentication outage classification
+
+The HTTP baseline exercised history and upload creation through the real GoTrue SDK with isolated upstream responses.
+All eight outage cases returned misleading HTTP 401 before the fix: 500, 502, 503, 504, 429, connection failure, timeout, and malformed successful response.
+Baseline log: `/tmp/spolysis-e894a3-auth-before.log` (eight failures and two passing credential-rejection checks).
+Protected endpoints now fail closed with HTTP 503 and a retry message when session verification is unavailable.
+Upstream 401 and 403 still reject credentials with HTTP 401.
+Regression checks verify that outages create no jobs or workflows and that the same token can read history and create an owned job after recovery.
+This validates local HTTP and SDK behavior, not production authentication, database writes, or native session behavior.
+Validation: `.venv-test/bin/python -m pytest -q` passes all 34 tests in 37.32 seconds.
+Ruff over `api pipeline tests`, changed Python-file formatting, `pip check`, and `git diff --check` pass.
+Two existing dependency deprecation warnings remain for Starlette's httpx adapter and Supabase's gotrue package.
+A separate Python 3.11 `.venv-test` was installed in this worktree; no mutable dependencies are shared.
+No background services were started, and all installation and validation processes exited.
+Checkpoint: `.gnhf/checkpoints/iteration-1-auth-outage.patch`.
+The change needs deployment before production behavior changes.
+
+The user supplied 2026-10-30 21:58 America/New_York health evidence: Supabase GoTrue and Fly `/health` returned HTTP 200.
+That supersedes the earlier DNS-outage snapshot below, but does not establish production sign-in or database-write readiness.
+Remaining work includes callback/Temporal recovery auditing, coaching alignment, capture and failed-job recovery, and narrow-phone/Dynamic Type verification.
+The loop stop condition is not met.
+
+## Current GNHF iteration 2: terminal callback ordering
+
+The HTTP lifecycle reproduction interleaves a failure or rejection callback after completion reads the job status and saves its result, but before it updates the job.
+Both baseline cases returned HTTP 200 and overwrote the terminal status with completed.
+Baseline evidence: `/tmp/spolysis-e894a3-callback-before.log` (two failing regression cases).
+Completion now conditionally updates only pending, processing, or already completed jobs and returns HTTP 409 when a terminal decision wins the race.
+The athlete retains the failure or rejection message, and the result endpoint refuses to expose the saved result for that terminal job.
+Duplicate completion remains supported; late processing, failure, and rejection callbacks preserve completed results.
+
+Validation: all 36 Python tests pass in 3.82 seconds; Ruff over `api pipeline tests`, changed Python-file formatting, and diff whitespace checks pass.
+Two existing dependency deprecation warnings remain.
+Tests exercise real HTTP handlers with isolated storage, workflow, and database adapters and deterministic callback ordering; they do not validate production Postgres concurrency or a deployed worker.
+The existing two-write result/status contract can still leave an inaccessible result row when a terminal callback wins.
+A database transaction could make those writes atomic, but requires a coordinated database function/migration and is deferred; the conditional status update is the recommended bounded fix within this iteration.
+No schema, callback name, ownership rule, or deployment changed.
+No background services were started.
+Checkpoint: `.gnhf/checkpoints/iteration-2-terminal-callback.patch`.
+Further Temporal delivery recovery, coaching alignment, and native narrow-phone verification remain in scope, so the loop stop condition is not met.
 
 ## Completed work
 
@@ -291,3 +331,176 @@ The test app was terminated and this worker-booted simulator was shut down, pres
 The phase 5 consolidated journey ends signed out; the affected pagination checks use a local fixture session and end in history before termination.
 All worker-started long-running processes are stopped.
 No useful-work exhaustion or production-release claim is made; continue the ranked backlog next iteration.
+
+## Continuation run bfd94b, iteration 1: confirmation contract
+
+The protected HTTP upload-confirmation baseline reproduced three incorrect 500 responses: Temporal connection failure, workflow-start failure, and metadata persistence failure after successful workflow start.
+Temporal failures now return 503 with instructions to retry starting the saved video without uploading again.
+A successful durable workflow start remains HTTP 200 if saving `temporal_run_id` fails; the server logs a warning, and callbacks continue to identify the job by its ID.
+The existing deterministic Temporal workflow ID is preserved.
+The regression tests exercise the HTTP lifecycle and real workflow-start helper with isolated Temporal and database adapters, including recovery and a processing callback after metadata failure.
+They do not establish production connectivity or database availability.
+All 49 Python tests pass; Ruff lint and formatting of changed Python files pass.
+The suite reports existing Starlette/httpx and GoTrue deprecation warnings.
+No app files changed, no background services were started, and no commit or deployment was made.
+Ranked items 2-5 and 7-9 from the continuation objective remain for later iterations.
+Captain verification remains required for the live Fly worker, private R2 configuration, applied migrations 001-004, a real signed-in job, and the Temporal tennis-analysis poller.
+
+## Continuation bfd94b iteration 2: result availability
+
+The HTTP lifecycle baseline completed a job and then fetched its result with missing, empty, or unavailable storage artifacts.
+All three returned HTTP 200 because presigning did not check object availability; a signing exception returned HTTP 500.
+The initial test setup omitted required callback fields and returned 422; the corrected baseline included those fields before reproducing the defects.
+Download signing now checks object existence and nonzero length, and the result endpoint maps media/signing failures to retryable HTTP 503 without changing job status.
+Canonical per-job object keys, ownership gating, private signed URLs, and optional historical media fields remain compatible.
+Verification: `.venv-test/bin/python -m pytest -q` passes 57 tests; `.venv-test/bin/python -m ruff check api pipeline tests` passes.
+The tests cover both artifact paths, storage recovery, and unauthorized requests issuing no storage calls.
+Storage checks add HEAD requests and cannot guarantee an object will remain available after a URL is returned.
+No production service was contacted or changed, and no background process was started.
+Captain verification remains required for the live Fly worker, private R2 configuration, migrations 001-004, a real signed-in job, and the tennis-analysis Temporal poller.
+Other ranked local work remains open; this iteration does not satisfy the full run stop condition.
+
+## Continuation bfd94b iteration 3: upload URL lifetime
+
+Protected HTTP issuance with real local SigV4 signing reproduced a 300-second expiry for both MP4 and MOV upload URLs.
+The first baseline request omitted the required stroke type and returned 422; corrected requests reproduced the expiry contract.
+The default upload URL lifetime is now 3600 seconds, providing a longer window for starting or retrying large transfers on slow connections.
+Signed content-type binding, per-job object keys, ownership, pending status, and confirmation-time size/type validation remain intact.
+Verification: all 59 Python tests pass, including existing oversized/empty/unsupported-upload rejection cases; Ruff and changed-file formatting pass.
+These checks use dummy signing credentials and isolated database adapters without contacting storage.
+They establish signed URL lifetime, not whether R2 interrupts an already-started PUT at expiry or whether a physical cellular upload succeeds.
+The longer lifetime also extends the validity of the private upload capability to one hour.
+No app files changed, no background process was started, and no commit or deployment was made.
+Ranked local work remains, including analyzed-window clarity, import/recovery/privacy guidance, completion notification safety, workflow timeouts, and public endpoint hardening.
+Captain verification remains required for the live Fly worker, private R2 configuration, migrations 001-004, a real signed-in job, and the tennis-analysis Temporal poller.
+
+## Continuation bfd94b iteration 4: preserve analysis outcomes
+
+The baseline HTTP regression saved a result, injected a completion status-write outage, then delivered the workflow's failure callback.
+The athlete-facing job status incorrectly became failed, preventing completion recovery.
+`fail_job` now no-ops when a result row exists, and the HTTP regression verifies successful completion retry and result access after recovery.
+The previous terminal-callback race regression now injects failure/rejection before result persistence, preserving the rule that an earlier terminal outcome cannot be revived.
+Completion and rejection delivery now execute outside the workflow's analysis-failure handler.
+Four isolated workflow branch checks establish that only processing/analysis activity errors trigger the failure callback; they do not execute Temporal scheduling or retry behavior.
+
+Validation: `.venv-test/bin/python -m pytest -q` passes all 64 tests; `.venv-test/bin/python -m ruff check api pipeline tests`, changed-Python Ruff formatting, and `git diff --check` pass.
+No app changes, background processes, commits, deployment, or production writes were made.
+The result-existence check and status mutation remain separate operations, so this is not a transactional concurrency guarantee.
+An exhausted completion/rejection delivery still leaves the workflow failed and may leave the job processing; operational callback redelivery remains necessary.
+Production rollout must account for existing Temporal histories; no live workflow replay or reset was performed.
+Worker liveness/timeouts, remaining app guidance, and public API hardening remain available local follow-up work.
+Captain verification remains required for the live Fly worker, private R2 access, migrations 001-004, a real signed-in job, and the tennis-analysis poller.
+
+## Continuation bfd94b iteration 5: public API surface
+
+The HTTP baseline returned 200 for unauthenticated requests to /docs, /redoc, and /openapi.json, and created an eleventh upload job within a minute.
+The API now disables all three documentation routes and applies the existing SlowAPI limiter to upload URL issuance at 10 requests per minute per client address.
+The shared limiter lives outside the application module to avoid circular imports from routers.
+An over-limit request returns 429 before creating a job or signing a storage URL; confirmation and job reads remain usable for existing uploads.
+The tests reset limiter storage between isolated HTTP lifecycles, keeping the production limiter enabled during regression checks.
+
+All 68 Python tests pass; Ruff lint, changed-file formatting, and diff checks pass.
+The checks use isolated database and storage adapters and do not establish production ingress behavior.
+The existing limiter uses process-local memory and the ASGI client address, so replicas have separate counters and users sharing an address share a quota.
+Production proxy address handling and aggregate multi-replica enforcement are not validated by these tests.
+No app files, generated Fly configuration, or orchestrator notes were changed; no background services, commits, deployment, or production writes were made.
+Workflow timeouts, analyzed-window clarity, and import/recovery/privacy guidance remain local follow-up work.
+Captain verification remains required for the live Fly worker, private R2 access, migrations 001-004, a real signed-in job, and the tennis-analysis poller.
+
+## Continuation bfd94b iteration 6: setup and release prerequisites
+
+README onboarding now names the current welcome and empty-home actions, verified against `WelcomeScreen.tsx` and `HomeScreen.tsx` without changing either screen.
+The setup and implementation status now include migration 004: `JobPremiumCompleteRequest` includes `fault_phase`, and `complete_premium_job` upserts the complete model into `results`.
+Omitting that migration leaves the documented deployment procedure incompatible with current callbacks.
+The current-status guidance distinguishes the later user-supplied health checks from the older DNS outage and from still-unverified production sign-in and persistence.
+README now states the captain's remaining worker, poller, private-storage, migration, and real-job verification requirements.
+
+This is a documentation-only slice, checked against repository source and dated audit evidence; `git diff --check` passes.
+No runtime tests or new service-health checks were run, and no native or production validation is claimed.
+No background processes, commits, production changes, or orchestrator-note edits were made.
+Local follow-up remains for workflow timeouts, analyzed-window clarity, import/recovery/privacy guidance, and obsolete native test selectors.
+In particular, `SmokeTests.swift` still expects the replaced welcome copy and needs a separately verified native test update.
+
+## Continuation bfd94b iteration 7 - native test compatibility
+
+Updated obsolete welcome and empty-history selectors in the native checks to match current screen source.
+Welcome Sign in ↗ and form Sign in remain distinct controls.
+The first build-for-testing exposed pre-existing compile errors: SignedInTests could not access chooseTennis or openHistory, which were private to ResultRecoveryTests.
+Moved these two shared helpers to a file-local XCTestCase extension; no product source or artwork changed.
+
+Validation:
+- Generated the test project with `GEM_HOME=/opt/homebrew/Cellar/cocoapods/1.17.0_1/libexec ruby app/e2e/create-project.rb`.
+- `xcodebuild build-for-testing -project /tmp/SpolysisUITests.xcodeproj -scheme SpolysisUITests -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath /tmp/spolysis-bfd94b-7-build CODE_SIGNING_ALLOWED=NO` succeeds for arm64 and x86_64.
+- Build log: `/tmp/spolysis-bfd94b-7-build.log`.
+- All 68 Python tests, Ruff, app TypeScript, ESLint, and diff checks pass.
+- `xcrun simctl list devices booted` fails with CoreSimulator connection refused and log access Operation not permitted in this sandbox.
+  Native execution and screenshot validation remain outstanding; source alignment and compilation do not establish runtime accessibility behavior.
+
+No services were started, no commits were created, and no production access was used.
+The ranked analyzed-window, capture/privacy, and workflow-timeout work remains for later iterations.
+
+## Continuation bfd94b iteration 8 - bounded workflow waits
+
+Protected upload-confirmation tests reproduced workflow starts without an execution timeout, and isolated workflow branch checks reproduced missing queue-wait limits on activity scheduling.
+All analysis and notification activities now have a five-minute schedule-to-start timeout.
+New workflows have a two-hour execution timeout, allowing the existing two 35-minute analysis attempts plus queue waits and callback retries.
+Existing workflow executions do not acquire the new API start option retroactively.
+Analysis or processing activity failures retain the retry-this-clip callback; completion and rejection delivery failures still preserve their analysis outcome.
+
+All 72 Python tests, Ruff lint, changed-file formatting, and diff checks pass.
+The checks exercise HTTP confirmation with an isolated Temporal client and workflow branches with injected activity timeout errors.
+They do not run a Temporal server, measure real timeout timing, or establish deployed replay compatibility.
+No background services, commits, production writes, or orchestrator-note edits were made.
+
+A workflow execution timeout terminates orchestration but does not itself update the jobs table.
+If the worker is entirely absent, it cannot run workflow failure handling or deliver the failure callback, so the athlete's job may remain pending or processing.
+Captain verification of the live Fly worker and tennis-analysis poller, and operational recovery of stranded jobs, remain required.
+Reliable database reconciliation independent of that worker would require a separately chosen structural change; this slice does not introduce another service.
+Analyzed-window clarity and capture/recovery/privacy guidance remain local follow-up work.
+
+## Continuation bfd94b iteration 9 - history failure reasons
+
+The local render baseline for a rejected history job failed because HomeScreen omitted its saved rejection_reason entirely.
+History now displays rejection and failure reasons across the card width below the existing summary, with the same reason included in the button accessibility label.
+Completed and active jobs suppress stale reasons, and historical jobs without a reason retain their existing row.
+The render probe uses mocked React Native and query/navigation adapters; it is not a native end-to-end test or visual verification.
+Probe: `/tmp/check-history.cjs`; it passes the rejected/failed, active/completed, and missing-reason cases after the change.
+The existing selected-rejection native check now requires the reason in the history button label before opening the job.
+
+Validation: all 72 Python tests, Ruff, app TypeScript, ESLint, HomeScreen Prettier, and diff checks pass.
+The generated native project builds for testing with the same generic simulator command as iteration 7, using derived data `/tmp/spolysis-bfd94b-9-build`.
+Build log: `/tmp/spolysis-bfd94b-9-build.log`, ending in TEST BUILD SUCCEEDED.
+`xcrun simctl list devices booted` still fails with CoreSimulator connection refused and Operation not permitted; no runtime test or screenshot is claimed.
+All started build processes exited; no background services, commits, production writes, or orchestrator-note edits were made.
+
+Analyzed-window clarity, import checklist, upload leave-guard, and privacy guidance remain local work.
+Captain verification still requires the live Fly worker, tennis-analysis poller, private R2 configuration, migrations 001-004, and one real signed-in job.
+The full run stop condition is not met.
+
+## Continuation bfd94b iteration 10 - estimated-phase viewer entry
+
+The viewer load handler ignored contact_frame and always opened at frame zero.
+A local execution probe of the actual setSkeleton handler reproduced frame 0 for a payload with contact_frame 30 before the fix.
+The viewer now opens paused at an integer contact_frame within the supplied motion window, including either endpoint.
+Missing, negative, fractional, nonnumeric, or out-of-range values fall back to frame zero for historical and malformed metadata.
+Loading motion also resets the playback accumulator and Play label so a replacement payload does not inherit active playback.
+The phase is inferred from wrist motion; this does not claim true ball-contact detection.
+The source-video start_frame is not added to contact_frame because pipeline/runner.py stores contact relative to the selected window.
+
+Validation: all 72 Python tests, Ruff, app TypeScript, ESLint, viewer build, and diff checks pass.
+The probe at /tmp/check-viewer-contact.cjs passes valid contacts, both endpoints, missing/invalid metadata, rendered-frame selection, and paused playback reset using real Three.js geometry with isolated scene/control adapters.
+It does not render WebGL or exercise the native WebView bridge.
+CoreSimulator still fails with connection refused and Operation not permitted; Computer Use denied Google Chrome access, so no visual or native runtime verification is claimed.
+No background services, commits, production writes, or orchestrator-note edits were made.
+
+Analyzed-window start time and automatic selection copy, import checklist, upload leave-guard, and privacy guidance remain local work.
+The captain prerequisites remain the live Fly worker, tennis-analysis poller, private R2 configuration, migrations 001-004, and one real signed-in job.
+The full run stop condition is not met.
+
+## Continuation e1101d iteration 3: analyzed-window copy
+
+ResultScreen now tells the player that the reviewed motion is the strongest racket-arm-speed window the analysis selected, not a swing they marked.
+The 3D guide states that the viewer opens paused at estimated contact inferred from wrist motion, not detected ball impact.
+No start_frame field was added to public result.json, and viewer seek still uses contact_frame only.
+App TypeScript and ESLint pass; this slice was not visually verified in the simulator.
+Secondary cue phases and the iPhone 17e empty-state visual check remain local follow-up work.

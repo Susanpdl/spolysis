@@ -110,6 +110,24 @@ def run_analysis(
             if handedness == "left"
             else normalized.keypoints_3d
         )
+
+        def display_joint(name: str) -> str:
+            if handedness == "right":
+                return name
+            return (
+                name.replace("right_", "other_")
+                .replace("left_", "right_")
+                .replace("other_", "left_")
+            )
+
+        primary = deltas.primary
+        if primary is not None:
+            primary_joint = display_joint(primary.joint)
+        elif deltas.fault_joints:
+            primary_joint = display_joint(deltas.fault_joints[0])
+        else:
+            primary_joint = None
+
         overlay = str(Path(work) / "overlay.mp4")
         render_overlay(
             pose.frame_paths,
@@ -120,6 +138,7 @@ def run_analysis(
             corrected.blend_weights,
             overlay,
             original_3d=original_pose,
+            primary_joint=primary_joint,
         )
         overlay_key = f"results/{job_id}/overlay.mp4"
         skeleton_key = f"results/{job_id}/skeleton_3d.json"
@@ -140,20 +159,14 @@ def run_analysis(
         # Confidence describes observed body keypoints, not clinical/model accuracy.
         confidence = float(np.clip(pose.keypoints[:, 5:, 2].mean(), 0, 1))
 
-        def display_joint(name: str) -> str:
-            if handedness == "right":
-                return name
-            return (
-                name.replace("right_", "other_")
-                .replace("left_", "right_")
-                .replace("other_", "left_")
-            )
-
         result = {
             "stroke_type": stroke_type,
-            "fault_label": display_joint(deltas.fault_joints[0])
-            if deltas.fault_joints
-            else None,
+            "fault_label": display_joint(primary.joint) if primary else None,
+            "fault_phase": primary.phase if primary else None,
+            "fault_phases": {
+                display_joint(joint): phase
+                for joint, phase in deltas.fault_phases.items()
+            },
             "confidence": confidence,
             "recommendation": recommend_3d(deltas, handedness),
             "overlay_video_url": overlay_key,

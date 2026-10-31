@@ -11,6 +11,7 @@ import numpy as np
 import structlog
 
 from pipeline.utils.skeleton import (
+    COCO_KEYPOINTS,
     L_SHOULDER,
     R_SHOULDER,
     L_HIP,
@@ -23,16 +24,19 @@ log = structlog.get_logger(__name__)
 # Radius of joint circles drawn on overlay frames
 _JOINT_RADIUS = 5
 
+# Larger filled circle and outer ring for the primary finding
+_PRIMARY_FILL_RADIUS = 8
+_PRIMARY_RING_RADIUS = 12
+_PRIMARY_RING_THICKNESS = 2
+
 # Line thickness for skeleton bones
 _BONE_THICKNESS = 3
 
-# Font used for joint index labels
-_LABEL_FONT = cv2.FONT_HERSHEY_SIMPLEX
-_LABEL_SCALE = 0.35
-_LABEL_THICKNESS = 1
-
-# Minimum keypoint confidence to draw a label
-_LABEL_CONF_THRESHOLD = 0.5
+_PRIMARY_JOINT_ALIASES = {
+    "hip_rotation": (L_HIP, R_HIP),
+    "right_shoulder_abduction": (R_SHOULDER,),
+    "left_shoulder_abduction": (L_SHOULDER,),
+}
 
 # Height of the blend-weight indicator bar at the bottom of each frame, in pixels
 _BLEND_BAR_HEIGHT = 8
@@ -115,24 +119,42 @@ def _project_corrected_to_pixels(
     return pixel_coords
 
 
+def _primary_joint_indices(primary_joint: str | int | None) -> tuple[int, ...]:
+    """Map a finding name to COCO joint indices for overlay highlighting."""
+    if primary_joint is None:
+        return ()
+    if isinstance(primary_joint, (int, np.integer)):
+        index = int(primary_joint)
+        if 0 <= index < 17:
+            return (index,)
+        return ()
+    name = str(primary_joint).strip().lower()
+    if name in _PRIMARY_JOINT_ALIASES:
+        return _PRIMARY_JOINT_ALIASES[name]
+    if name in COCO_KEYPOINTS:
+        return (COCO_KEYPOINTS.index(name),)
+    return ()
+
+
 def _draw_skeleton(
     canvas: np.ndarray,
     kps_2d: np.ndarray,  # (17, 2) pixel coords
     color: tuple[int, int, int],
     alpha: float,
-    draw_labels: bool = False,
-    conf: np.ndarray | None = None,  # (17,) confidence scores, optional
+    primary_joints: tuple[int, ...] = (),
 ) -> None:
     """
     Draw skeleton bones and joints onto canvas in-place using alpha blending.
 
     A temporary overlay image is composited onto canvas so the alpha value
     controls overall skeleton transparency without requiring per-pixel masking.
+    The primary finding is a larger filled joint with an outer ring, not an index.
     """
     if alpha < 1e-4:
         return
 
     overlay = canvas.copy()
+    primary = {int(j) for j in primary_joints if 0 <= int(j) < 17}
 
     for a_idx, b_idx in SKELETON_EDGES:
         a = kps_2d[a_idx]
@@ -143,19 +165,20 @@ def _draw_skeleton(
 
     for j in range(17):
         px, py = int(round(kps_2d[j, 0])), int(round(kps_2d[j, 1]))
-        cv2.circle(overlay, (px, py), _JOINT_RADIUS, color, -1, cv2.LINE_AA)
-
-        if draw_labels and conf is not None and float(conf[j]) > _LABEL_CONF_THRESHOLD:
-            cv2.putText(
+        if j in primary:
+            cv2.circle(
+                overlay, (px, py), _PRIMARY_FILL_RADIUS, color, -1, cv2.LINE_AA
+            )
+            cv2.circle(
                 overlay,
-                str(j),
-                (px + _JOINT_RADIUS + 1, py - _JOINT_RADIUS - 1),
-                _LABEL_FONT,
-                _LABEL_SCALE,
+                (px, py),
+                _PRIMARY_RING_RADIUS,
                 color,
-                _LABEL_THICKNESS,
+                _PRIMARY_RING_THICKNESS,
                 cv2.LINE_AA,
             )
+        else:
+            cv2.circle(overlay, (px, py), _JOINT_RADIUS, color, -1, cv2.LINE_AA)
 
     cv2.addWeighted(overlay, alpha, canvas, 1.0 - alpha, 0, canvas)
 
@@ -204,6 +227,7 @@ def render_overlay(
     original_color: tuple[int, int, int] = (255, 100, 50),
     skeleton_alpha: float = 0.75,
     original_3d: np.ndarray | None = None,
+    primary_joint: str | int | None = None,
 ) -> RenderResult:
     """
     Composite the corrected skeleton onto original video frames and encode to H.264.
@@ -226,6 +250,7 @@ def render_overlay(
         skeleton_color:  BGR color for corrected skeleton
         original_color:  BGR color for original skeleton
         skeleton_alpha:  max opacity for the corrected skeleton overlay
+        primary_joint:   finding name or COCO index to mark; no numeric labels
 
     Returns:
         RenderResult with output video metadata.
@@ -264,6 +289,7 @@ def render_overlay(
         fps=fps,
         output_path=output_path,
     )
+    primary_indices = _primary_joint_indices(primary_joint)
 
     with tempfile.TemporaryDirectory() as frame_dir:
         for t in range(T_frames):
@@ -297,11 +323,6 @@ def render_overlay(
                 ]
                 corrected_2d = original_2d_kps[t, :, :2] + displacement * scale
 
-            # Original skeleton confidence scores (third column of RTMPose output)
-            orig_conf = (
-                original_2d_kps[t, :, 2] if original_2d_kps.shape[2] == 3 else None
-            )
-
             # Draw original skeleton where correction is not fully active.
             # Fades out as blend weight increases so the two skeletons don't fight.
             orig_alpha = (1.0 - w) * 0.5
@@ -311,8 +332,7 @@ def render_overlay(
                     original_2d_kps[t, :, :2],
                     original_color,
                     orig_alpha,
-                    draw_labels=False,
-                    conf=orig_conf,
+                    primary_joints=primary_indices,
                 )
 
             # Draw corrected skeleton, opacity scales with blend weight
@@ -323,8 +343,7 @@ def render_overlay(
                     corrected_2d,
                     skeleton_color,
                     corr_alpha,
-                    draw_labels=True,
-                    conf=None,  # corrected skeleton has no per-joint confidence
+                    primary_joints=primary_indices,
                 )
 
             _draw_blend_bar(img, w, width, height)

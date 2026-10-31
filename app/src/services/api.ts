@@ -113,6 +113,7 @@ export interface Job {
   status: "pending" | "processing" | "completed" | "failed" | "rejected";
   rejection_reason?: string;
   error_message?: string;
+  handedness?: "right" | "left";
   created_at: string;
   updated_at: string;
 }
@@ -121,6 +122,8 @@ export interface Result {
   job_id: string;
   stroke_type: "forehand" | "backhand" | "serve" | "volley";
   fault_label?: string;
+  fault_phase?: string;
+  fault_phases?: Record<string, string>;
   confidence: number;
   recommendation: string;
   reference_clip_url?: string;

@@ -11,12 +11,16 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 
 
 def _parse_job(row: dict) -> JobResponse:
+    handedness = row.get("handedness")
+    if handedness not in {"right", "left"}:
+        handedness = None
     return JobResponse(
         id=row["id"],
         tier=row["tier"],
         status=row["status"],
         rejection_reason=row.get("rejection_reason"),
         error_message=row.get("error_message"),
+        handedness=handedness,
         created_at=datetime.fromisoformat(row["created_at"]),
         updated_at=datetime.fromisoformat(row["updated_at"]),
     )
@@ -81,20 +85,30 @@ async def get_job_result(job_id: str, user: dict = Depends(get_current_user)):
     if not result.data:
         raise HTTPException(status_code=404, detail="Result not found")
 
-    r = result.data[0]
+    r = dict(result.data[0])
     from api.r2 import generate_download_url
 
     # Return short-lived authenticated links, never public links to user footage.
-    if r.get("overlay_video_url"):
-        r["overlay_video_url"] = generate_download_url(f"results/{job_id}/overlay.mp4")
-    if r.get("skeleton_3d_url"):
-        r["skeleton_3d_url"] = generate_download_url(
-            f"results/{job_id}/skeleton_3d.json"
-        )
+    try:
+        if r.get("overlay_video_url"):
+            r["overlay_video_url"] = generate_download_url(
+                f"results/{job_id}/overlay.mp4"
+            )
+        if r.get("skeleton_3d_url"):
+            r["skeleton_3d_url"] = generate_download_url(
+                f"results/{job_id}/skeleton_3d.json"
+            )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Result media is temporarily unavailable. Please retry loading this result.",
+        ) from exc
     return ResultResponse(
         job_id=r["job_id"],
         stroke_type=r["stroke_type"],
         fault_label=r.get("fault_label"),
+        fault_phase=r.get("fault_phase"),
+        fault_phases=r.get("fault_phases"),
         confidence=r["confidence"],
         recommendation=r["recommendation"],
         reference_clip_url=r.get("reference_clip_url"),

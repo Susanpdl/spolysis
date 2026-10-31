@@ -18,7 +18,7 @@ import ThreeJSViewer, {
   SkeletonData,
   parseSkeleton,
 } from "@/components/ThreeJSViewer";
-import { SwingCues } from "@/components/SwingCues";
+import { SwingCues, jointRoleLabel } from "@/components/SwingCues";
 import { useJob } from "@/hooks/useJob";
 import { colors, typography, spacing } from "@/theme";
 import { recordingStore } from "@/store/recordingStore";
@@ -30,22 +30,6 @@ const STROKE_LABELS: Record<string, string> = {
   volley: "Volley",
 };
 
-const FOCUS_LABELS: Record<string, string> = {
-  hip_rotation: "Torso turn",
-  right_elbow: "Hitting arm",
-  left_elbow: "Free arm",
-  right_knee: "Leg drive",
-  right_shoulder_abduction: "Serve reach",
-  late_contact: "Late contact",
-  open_stance: "Open stance",
-  low_follow_through: "Low follow-through",
-  arm_only: "Arm-only swing",
-  no_hip_rotation: "No hip rotation",
-  grip_issue: "Grip inconsistency",
-  no_trophy_position: "Missing trophy position",
-  low_toss: "Low ball toss",
-};
-
 type ResultTab = "video" | "3d";
 
 export default function ResultScreen({
@@ -53,7 +37,7 @@ export default function ResultScreen({
   navigation,
 }: RecordingScreenProps<"Result">) {
   const { jobId } = route.params;
-  const { result, isLoadingJob, isLoadingResult, refetch, refetchResult } =
+  const { result, job, isLoadingJob, isLoadingResult, refetch, refetchResult } =
     useJob(jobId);
   const reset = recordingStore((s) => s.reset);
 
@@ -186,9 +170,9 @@ export default function ResultScreen({
     );
   }
 
+  const handedness = job?.handedness === "left" ? "left" : "right";
   const faultLabel = result.fault_label
-    ? (FOCUS_LABELS[result.fault_label] ??
-      result.fault_label.replace(/_/g, " "))
+    ? jointRoleLabel(result.fault_label, handedness)
     : null;
   const confidence = Math.round(result.confidence * 100);
 
@@ -226,6 +210,25 @@ export default function ResultScreen({
             <Text style={styles.faultDot}>●</Text>
             <Text style={[typography.bodySmall, styles.faultText]}>
               3D focus: {faultLabel}
+            </Text>
+          </View>
+        )}
+
+        <View style={styles.coachingCard}>
+          <Text style={styles.coachingEyebrow}>WHAT TO REHEARSE</Text>
+          <Text style={styles.coachingText}>{result.recommendation}</Text>
+          <Text style={styles.limitsText}>
+            Video-based estimates, not millimetre measurements or a clinical
+            assessment. Contact is inferred from wrist motion.
+          </Text>
+        </View>
+
+        {hasMotionData && (
+          <View style={styles.windowNote}>
+            <Text style={styles.windowEyebrow}>WHAT YOU ARE REVIEWING</Text>
+            <Text style={styles.windowText}>
+              This is the strongest racket-arm-speed window the analysis
+              selected from your recording, not a swing you marked.
             </Text>
           </View>
         )}
@@ -329,9 +332,11 @@ export default function ResultScreen({
               </View>
               <Text style={styles.motionGuideText}>
                 The green mannequin faces into the illustrative court. The gold
-                line follows the racket grip. Play or scrub to follow the
-                movement, or turn the view to inspect other angles. Court
-                position is not tracked in your video.
+                line follows the racket grip. The viewer opens paused at
+                estimated contact, inferred from wrist motion, not detected ball
+                impact. Play or scrub to follow the movement, or turn the view
+                to inspect other angles. Court position is not tracked in your
+                video.
               </Text>
               {!!result.fault_joints?.length && (
                 <Text style={styles.focusGuideText}>
@@ -399,7 +404,13 @@ export default function ResultScreen({
               )}
             </View>
             {result.skeleton_3d_url && result.delta_summary && (
-              <SwingCues faultJoints={result.fault_joints ?? []} />
+              <SwingCues
+                faultJoints={result.fault_joints ?? []}
+                faultLabel={result.fault_label}
+                faultPhase={result.fault_phase}
+                faultPhases={result.fault_phases}
+                handedness={handedness}
+              />
             )}
           </>
         )}
@@ -471,6 +482,46 @@ const styles = StyleSheet.create({
   },
   faultDot: { color: colors.warning, fontSize: 10 },
   faultText: { color: colors.warning },
+  coachingCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 24,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  coachingEyebrow: {
+    ...typography.label,
+    color: colors.primary,
+    fontSize: 10,
+  },
+  coachingText: {
+    color: colors.text.primary,
+    fontFamily: "DMSans_400Regular",
+    fontSize: 16,
+    lineHeight: 24,
+  },
+  limitsText: {
+    color: colors.text.muted,
+    fontFamily: "DMSans_400Regular",
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  windowNote: {
+    backgroundColor: colors.surface,
+    borderRadius: 24,
+    padding: spacing.md,
+    gap: spacing.xs,
+  },
+  windowEyebrow: {
+    ...typography.label,
+    color: colors.primary,
+    fontSize: 10,
+  },
+  windowText: {
+    color: colors.text.secondary,
+    fontFamily: "DMSans_400Regular",
+    fontSize: 14,
+    lineHeight: 20,
+  },
   tabBar: {
     flexDirection: "row",
     backgroundColor: colors.surface,

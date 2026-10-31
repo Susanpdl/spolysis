@@ -198,3 +198,12 @@ The generated test project passes simulator build-for-testing for arm64 and x86_
 All 68 Python tests, Ruff, app TypeScript, ESLint, and diff checks pass.
 CoreSimulator access fails in this sandbox with connection refused and Operation not permitted, so no native test execution or new screenshots are claimed.
 A simulator run remains necessary to verify accessibility labels and navigation at runtime.
+
+## Continuation workflow wait bounds
+
+Continuation run bfd94b iteration 8 adds five-minute activity queue-wait limits and a two-hour execution limit for new analysis workflows.
+All 72 Python tests and Ruff pass, including HTTP workflow-start options and isolated timeout-failure branches.
+Analysis activity failure requests retrying the same clip; a result-delivery failure does not overwrite successful analysis with recapture guidance.
+No real Temporal timeout or native UI behavior was exercised.
+A completely absent worker cannot deliver any status callback, and workflow execution timeout alone does not change the athlete's database status.
+Live worker and poller verification and stranded-job recovery remain captain responsibilities.

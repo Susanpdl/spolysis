@@ -473,6 +473,11 @@ def test_temporal_outage_preserves_saved_upload_for_retry(client, monkeypatch, s
     assert c.post(f"/uploads/{job}/confirm").status_code == 200
     assert len(db.rows["jobs"]) == 1
     assert temporal.start_workflow.call_args.kwargs["id"] == f"tennis-analysis-{job}"
+    from datetime import timedelta
+
+    assert temporal.start_workflow.call_args.kwargs["execution_timeout"] == timedelta(
+        hours=2
+    )
 
 
 def test_started_workflow_survives_metadata_write_failure(client, monkeypatch):

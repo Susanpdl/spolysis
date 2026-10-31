@@ -438,3 +438,22 @@ Validation:
 
 No services were started, no commits were created, and no production access was used.
 The ranked analyzed-window, capture/privacy, and workflow-timeout work remains for later iterations.
+
+## Continuation bfd94b iteration 8 - bounded workflow waits
+
+Protected upload-confirmation tests reproduced workflow starts without an execution timeout, and isolated workflow branch checks reproduced missing queue-wait limits on activity scheduling.
+All analysis and notification activities now have a five-minute schedule-to-start timeout.
+New workflows have a two-hour execution timeout, allowing the existing two 35-minute analysis attempts plus queue waits and callback retries.
+Existing workflow executions do not acquire the new API start option retroactively.
+Analysis or processing activity failures retain the retry-this-clip callback; completion and rejection delivery failures still preserve their analysis outcome.
+
+All 72 Python tests, Ruff lint, changed-file formatting, and diff checks pass.
+The checks exercise HTTP confirmation with an isolated Temporal client and workflow branches with injected activity timeout errors.
+They do not run a Temporal server, measure real timeout timing, or establish deployed replay compatibility.
+No background services, commits, production writes, or orchestrator-note edits were made.
+
+A workflow execution timeout terminates orchestration but does not itself update the jobs table.
+If the worker is entirely absent, it cannot run workflow failure handling or deliver the failure callback, so the athlete's job may remain pending or processing.
+Captain verification of the live Fly worker and tennis-analysis poller, and operational recovery of stranded jobs, remain required.
+Reliable database reconciliation independent of that worker would require a separately chosen structural change; this slice does not introduce another service.
+Analyzed-window clarity and capture/recovery/privacy guidance remain local follow-up work.

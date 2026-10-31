@@ -1,4 +1,5 @@
 import { authStore } from "@/store/authStore";
+import type { StrokeType } from "@/sports/catalog";
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -104,7 +105,7 @@ export const api = {
   },
 };
 
-export type StrokeType = "forehand" | "backhand" | "serve" | "volley";
+export type { StrokeType } from "@/sports/catalog";
 
 export interface Job {
   id: string;

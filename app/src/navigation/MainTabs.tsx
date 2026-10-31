@@ -45,9 +45,17 @@ export function MainTabs() {
         tabBarStyle: {
           backgroundColor: colors.surface,
           borderTopColor: colors.border,
+          borderTopWidth: 1,
+          height: 82,
+          paddingTop: 9,
+          paddingBottom: 12,
         },
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.text.muted,
+        tabBarLabelStyle: {
+          fontFamily: "DMSans_600SemiBold",
+          fontSize: 11,
+        },
       })}
     >
       <Tab.Screen

@@ -4,6 +4,10 @@ import { colors, spacing, typography } from "@/theme";
 
 const steps = [
   {
+    title: "Choose a sport",
+    description: "Tennis analysis is available now, with more sports planned.",
+  },
+  {
     title: "Choose your stroke",
     description: "Select your stroke type and playing hand.",
   },
@@ -41,7 +45,7 @@ export function GettingStarted() {
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
-    borderRadius: 20,
+    borderRadius: 24,
     borderWidth: 1,
     borderColor: colors.border,
     padding: spacing.lg,
@@ -60,6 +64,11 @@ const styles = StyleSheet.create({
   },
   number: { ...typography.bodySmall, fontWeight: "700", color: colors.primary },
   copy: { flex: 1, gap: spacing.xs },
-  title: { ...typography.bodySmall, fontWeight: "600", color: colors.text.primary },
+  title: {
+    ...typography.bodySmall,
+    fontFamily: "DMSans_700Bold",
+    fontWeight: "700",
+    color: colors.text.primary,
+  },
   description: { ...typography.bodySmall, color: colors.text.secondary },
 });

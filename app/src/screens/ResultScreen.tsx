@@ -18,7 +18,7 @@ import ThreeJSViewer, {
   SkeletonData,
   parseSkeleton,
 } from "@/components/ThreeJSViewer";
-import DeltaTable from "@/components/DeltaTable";
+import { SwingCues } from "@/components/SwingCues";
 import { useJob } from "@/hooks/useJob";
 import { colors, typography, spacing } from "@/theme";
 import { recordingStore } from "@/store/recordingStore";
@@ -30,7 +30,12 @@ const STROKE_LABELS: Record<string, string> = {
   volley: "Volley",
 };
 
-const FAULT_LABELS: Record<string, string> = {
+const FOCUS_LABELS: Record<string, string> = {
+  hip_rotation: "Torso turn",
+  right_elbow: "Hitting arm",
+  left_elbow: "Free arm",
+  right_knee: "Leg drive",
+  right_shoulder_abduction: "Serve reach",
   late_contact: "Late contact",
   open_stance: "Open stance",
   low_follow_through: "Low follow-through",
@@ -114,7 +119,7 @@ export default function ResultScreen({
 
   const handleDone = () => {
     reset();
-    navigation.navigate("Capture");
+    navigation.navigate("Sports");
   };
 
   const handleShare = async () => {
@@ -182,7 +187,8 @@ export default function ResultScreen({
   }
 
   const faultLabel = result.fault_label
-    ? (FAULT_LABELS[result.fault_label] ?? result.fault_label)
+    ? (FOCUS_LABELS[result.fault_label] ??
+      result.fault_label.replace(/_/g, " "))
     : null;
   const confidence = Math.round(result.confidence * 100);
 
@@ -219,7 +225,7 @@ export default function ResultScreen({
           <View style={styles.faultChip}>
             <Text style={styles.faultDot}>●</Text>
             <Text style={[typography.bodySmall, styles.faultText]}>
-              Compare: {faultLabel.replace(/_/g, " ")}
+              3D focus: {faultLabel}
             </Text>
           </View>
         )}
@@ -229,7 +235,7 @@ export default function ResultScreen({
           <View style={styles.tabBar}>
             <TouchableOpacity
               accessibilityRole="button"
-              style={styles.tab}
+              style={[styles.tab, activeTab === "video" && styles.tabActive]}
               onPress={() => setActiveTab("video")}
             >
               <Text
@@ -242,11 +248,10 @@ export default function ResultScreen({
               >
                 Video
               </Text>
-              {activeTab === "video" && <View style={styles.tabUnderline} />}
             </TouchableOpacity>
             <TouchableOpacity
               accessibilityRole="button"
-              style={styles.tab}
+              style={[styles.tab, activeTab === "3d" && styles.tabActive]}
               onPress={() => setActiveTab("3d")}
             >
               <Text
@@ -259,7 +264,6 @@ export default function ResultScreen({
               >
                 3D View
               </Text>
-              {activeTab === "3d" && <View style={styles.tabUnderline} />}
             </TouchableOpacity>
           </View>
         )}
@@ -305,6 +309,36 @@ export default function ResultScreen({
         {/* 3D tab */}
         {hasMotionData && activeTab === "3d" && (
           <>
+            <View style={styles.motionGuide}>
+              <Text style={[typography.h3, styles.motionGuideTitle]}>
+                Follow the suggested swing
+              </Text>
+              <View style={styles.motionLegend}>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, styles.legendOriginal]} />
+                  <Text style={styles.legendText}>Your swing</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, styles.legendSuggested]} />
+                  <Text style={styles.legendText}>Suggested</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, styles.legendTrail]} />
+                  <Text style={styles.legendText}>Racket path</Text>
+                </View>
+              </View>
+              <Text style={styles.motionGuideText}>
+                The green mannequin faces into the illustrative court. The gold
+                line follows the racket grip. Play or scrub to follow the
+                movement, or turn the view to inspect other angles. Court
+                position is not tracked in your video.
+              </Text>
+              {!!result.fault_joints?.length && (
+                <Text style={styles.focusGuideText}>
+                  Violet rings mark the joints highlighted in this analysis.
+                </Text>
+              )}
+            </View>
             <View style={styles.viewerSection}>
               {result.skeleton_3d_url ? (
                 skeletonLoading ? (
@@ -322,6 +356,7 @@ export default function ResultScreen({
                 ) : skeletonFrames ? (
                   <ThreeJSViewer
                     skeletonData={skeletonFrames}
+                    focusJoints={result.fault_joints ?? []}
                     style={styles.viewer}
                   />
                 ) : (
@@ -363,26 +398,11 @@ export default function ResultScreen({
                 </View>
               )}
             </View>
+            {result.skeleton_3d_url && result.delta_summary && (
+              <SwingCues faultJoints={result.fault_joints ?? []} />
+            )}
           </>
         )}
-
-        {/* Joint angle comparison */}
-        {result.delta_summary && result.fault_joints && (
-          <DeltaTable
-            deltaSummary={result.delta_summary}
-            faultJoints={result.fault_joints}
-          />
-        )}
-
-        {/* Coaching text */}
-        <View style={styles.recommendationCard}>
-          <Text style={[typography.label, styles.sectionLabel]}>
-            Coaching note
-          </Text>
-          <Text style={[typography.body, styles.recommendationText]}>
-            {result.recommendation}
-          </Text>
-        </View>
 
         {/* Actions */}
         <View style={styles.actions}>
@@ -414,67 +434,110 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: spacing.lg,
   },
-  scroll: { padding: spacing.lg, gap: spacing.lg },
+  scroll: { padding: spacing.md, gap: spacing.md },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     backgroundColor: colors.surface,
-    borderRadius: 14,
+    borderRadius: 24,
     padding: spacing.md,
+    shadowColor: "#281950",
+    shadowOpacity: 0.035,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 1,
   },
   confidencePill: {
-    backgroundColor: colors.primaryMuted,
-    borderRadius: 20,
+    backgroundColor: "#E5F6EC",
+    borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
-  confidenceText: { color: colors.primary, fontWeight: "700", fontSize: 13 },
+  confidenceText: {
+    color: "#25804F",
+    fontFamily: "DMSans_700Bold",
+    fontSize: 12,
+  },
   faultChip: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
-    backgroundColor: colors.errorMuted,
+    backgroundColor: "#F8EFE4",
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: 10,
+    borderRadius: 999,
     alignSelf: "flex-start",
   },
-  faultDot: { color: colors.error, fontSize: 10 },
-  faultText: { color: colors.error },
+  faultDot: { color: colors.warning, fontSize: 10 },
+  faultText: { color: colors.warning },
   tabBar: {
     flexDirection: "row",
     backgroundColor: colors.surface,
-    borderRadius: 12,
+    borderRadius: 999,
     overflow: "hidden",
+    padding: 4,
   },
   tab: {
     flex: 1,
     alignItems: "center",
-    paddingVertical: spacing.sm + 2,
-    position: "relative",
+    paddingVertical: 12,
+    borderRadius: 999,
   },
-  tabLabelActive: { color: colors.primary },
+  tabActive: { backgroundColor: colors.primary },
+  tabLabelActive: {
+    color: colors.text.inverse,
+    fontFamily: "DMSans_700Bold",
+  },
   tabLabelInactive: { color: colors.text.muted },
-  tabUnderline: {
-    position: "absolute",
-    bottom: 0,
-    left: "20%",
-    right: "20%",
-    height: 2,
-    backgroundColor: colors.primary,
-    borderRadius: 2,
-  },
   videoSection: { gap: spacing.md },
   videoBlock: { gap: spacing.sm },
   sectionLabel: { color: colors.text.muted },
-  videoOverlay: { height: 240, borderRadius: 14 },
-  videoReference: { height: 200, borderRadius: 14 },
+  videoOverlay: { height: 240, borderRadius: 24 },
+  videoReference: { height: 200, borderRadius: 24 },
+  motionGuide: {
+    backgroundColor: colors.surface,
+    borderRadius: 24,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  motionGuideTitle: { color: colors.text.primary },
+  motionLegend: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    columnGap: spacing.md,
+    rowGap: spacing.sm,
+  },
+  legendItem: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  legendDot: { width: 10, height: 10, borderRadius: 5 },
+  legendOriginal: {
+    borderWidth: 2,
+    borderColor: "#80baff",
+    backgroundColor: "transparent",
+  },
+  legendSuggested: { backgroundColor: "#34A06A" },
+  legendTrail: { backgroundColor: "#ffc45c" },
+  legendText: {
+    color: colors.text.secondary,
+    fontFamily: "DMSans_600SemiBold",
+    fontSize: 13,
+  },
+  motionGuideText: {
+    color: colors.text.secondary,
+    fontFamily: "DMSans_400Regular",
+    lineHeight: 20,
+  },
+  focusGuideText: {
+    color: colors.primary,
+    fontFamily: "DMSans_600SemiBold",
+    lineHeight: 18,
+    fontSize: 12,
+  },
   viewerSection: {},
-  viewer: { height: 420, borderRadius: 14, overflow: "hidden" },
+  viewer: { height: 460, borderRadius: 24, overflow: "hidden" },
   viewerPlaceholder: {
     height: 320,
-    borderRadius: 14,
+    borderRadius: 24,
     backgroundColor: colors.surface,
     alignItems: "center",
     justifyContent: "center",
@@ -483,33 +546,33 @@ const styles = StyleSheet.create({
   },
   recoveryText: {
     color: colors.text.secondary,
+    fontFamily: "DMSans_400Regular",
     textAlign: "center",
     lineHeight: 20,
   },
-  recommendationCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 14,
-    padding: spacing.md,
-    gap: spacing.sm,
-    borderLeftWidth: 3,
-    borderLeftColor: colors.primary,
-  },
-  recommendationText: { color: colors.text.primary, lineHeight: 24 },
   actions: { gap: spacing.sm, paddingBottom: spacing.xl },
   shareBtn: {
-    backgroundColor: colors.primaryMuted,
-    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderRadius: 999,
     paddingVertical: 14,
     alignItems: "center",
     borderWidth: 1,
-    borderColor: colors.primary,
+    borderColor: colors.border,
   },
-  shareBtnText: { color: colors.primary, fontWeight: "700", fontSize: 15 },
+  shareBtnText: {
+    color: colors.primary,
+    fontFamily: "DMSans_700Bold",
+    fontSize: 15,
+  },
   doneBtn: {
     backgroundColor: colors.primary,
-    borderRadius: 12,
+    borderRadius: 999,
     paddingVertical: 14,
     alignItems: "center",
   },
-  doneBtnText: { color: colors.text.inverse, fontWeight: "700", fontSize: 15 },
+  doneBtnText: {
+    color: colors.text.inverse,
+    fontFamily: "DMSans_700Bold",
+    fontSize: 15,
+  },
 });

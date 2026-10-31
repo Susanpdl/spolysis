@@ -5,12 +5,12 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.spolysis.app",
       "infoPlist": {
-        "NSCameraUsageDescription": "Spolysis uses your camera to record your tennis strokes for analysis.",
+        "NSCameraUsageDescription": "Spolysis uses your camera to record sports movements for analysis.",
         "NSMicrophoneUsageDescription": "Spolysis uses your microphone while recording tennis strokes.",
         "NSPhotoLibraryUsageDescription": "Spolysis lets you upload existing videos from your photo library.",
         "ITSAppUsesNonExemptEncryption": false
@@ -19,7 +19,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0a0a0a"
+      "backgroundColor": "#F1F2F9"
       },
       "package": "com.spolysis.app",
       "permissions": [
@@ -42,7 +42,7 @@
         {
           "image": "./assets/splash.png",
           "resizeMode": "contain",
-          "backgroundColor": "#0a0a0a",
+          "backgroundColor": "#F1F2F9",
           "imageWidth": 200
         }
       ]

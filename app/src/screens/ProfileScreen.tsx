@@ -4,7 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { authStore } from "@/store/authStore";
 import { authService } from "@/services/auth";
 import { Button } from "@/components/Button";
-import { colors } from "@/theme";
+import { colors, typography } from "@/theme";
 export default function ProfileScreen() {
   const user = authStore((s) => s.user);
   const [signingOut, setSigningOut] = useState(false);
@@ -33,7 +33,7 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView style={styles.page}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>Your account</Text>
+        <Text style={[typography.h2, styles.title]}>Your account</Text>
         <View style={styles.avatar}>
           <Text style={styles.initial}>
             {user?.email?.[0]?.toUpperCase() ?? "S"}
@@ -41,10 +41,10 @@ export default function ProfileScreen() {
         </View>
         <Text style={styles.email}>{user?.email}</Text>
         <View style={styles.card}>
-          <Text style={styles.heading}>3D stroke analysis</Text>
+          <Text style={styles.heading}>Sports movement analysis</Text>
           <Text style={styles.text}>
-            Review your motion, compare joint angles and explore a suggested
-            correction on your own recording.
+            Tennis is the first available sport. Review your motion, compare
+            joint angles, and explore a suggested correction on your recording.
           </Text>
         </View>
         <View style={styles.card}>
@@ -85,23 +85,40 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.background },
   content: { padding: 24, gap: 20 },
-  title: { fontSize: 28, fontWeight: "700", color: colors.text.primary },
+  title: { color: colors.text.primary },
   avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
+    width: 76,
+    height: 76,
+    borderRadius: 26,
     backgroundColor: colors.primaryMuted,
     alignItems: "center",
     justifyContent: "center",
   },
-  initial: { fontSize: 28, color: colors.primary, fontWeight: "700" },
-  email: { color: colors.text.primary, fontSize: 16 },
+  initial: {
+    fontFamily: "Fraunces_500Medium",
+    fontSize: 30,
+    color: colors.primary,
+  },
+  email: {
+    color: colors.text.primary,
+    fontFamily: "DMSans_600SemiBold",
+    fontSize: 16,
+  },
   card: {
-    padding: 18,
-    borderRadius: 16,
+    padding: 20,
+    borderRadius: 24,
     backgroundColor: colors.surface,
     gap: 8,
   },
-  heading: { color: colors.text.primary, fontWeight: "600", fontSize: 16 },
-  text: { color: colors.text.secondary, lineHeight: 21, fontSize: 14 },
+  heading: {
+    color: colors.text.primary,
+    fontFamily: "DMSans_700Bold",
+    fontSize: 15,
+  },
+  text: {
+    color: colors.text.secondary,
+    fontFamily: "DMSans_400Regular",
+    lineHeight: 21,
+    fontSize: 14,
+  },
 });

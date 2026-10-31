@@ -45,17 +45,22 @@ export function parseSkeleton(data: unknown): SkeletonData {
 }
 export default function ThreeJSViewer({
   skeletonData,
+  focusJoints = [],
   style,
 }: {
   skeletonData: SkeletonData;
+  focusJoints?: string[];
   style?: ViewStyle;
 }) {
   const web = useRef<WebView>(null);
   const [error, setError] = useState<string | null>(null);
-  const inject = () =>
-    web.current?.injectJavaScript(
-      `window.setSkeleton(${JSON.stringify(skeletonData)});true;`,
-    );
+  const inject = () => {
+    const payload = JSON.stringify({
+      ...skeletonData,
+      focus_joints: focusJoints,
+    }).replace(/</g, "\\u003c");
+    web.current?.injectJavaScript(`window.setSkeleton(${payload});true;`);
+  };
   return (
     <View style={[styles.container, style]}>
       {error ? (
@@ -91,8 +96,8 @@ const styles = StyleSheet.create({
     height: 420,
     borderRadius: 16,
     overflow: "hidden",
-    backgroundColor: "#101914",
+    backgroundColor: "#E5EEE7",
   },
-  web: { backgroundColor: "#101914" },
-  error: { color: "#eaf5ed", padding: 24 },
+  web: { backgroundColor: "#E5EEE7" },
+  error: { color: "#20392B", padding: 24 },
 });

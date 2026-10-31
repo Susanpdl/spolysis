@@ -16,6 +16,7 @@ import { useJob } from "@/hooks/useJob";
 import { api, ApiError } from "@/services/api";
 import { createVideoUpload } from "@/services/upload";
 import { colors } from "@/theme";
+import { getSport } from "@/sports/catalog";
 
 export default function UploadProgressScreen({
   route,
@@ -58,8 +59,12 @@ export default function UploadProgressScreen({
             videoUri,
             strokeType,
             handedness,
+            sportId = "tennis",
             contentType = "video/mp4",
           } = route.params;
+          const sport = getSport(sportId);
+          if (!sport.available)
+            throw new Error(`${sport.name} analysis is not available yet.`);
           if (!videoUri || !strokeType)
             throw new Error("Choose a video and stroke type first.");
           const response = await api.uploads.getUrl(
@@ -245,7 +250,7 @@ export default function UploadProgressScreen({
             <Button
               title="Choose another video"
               variant="secondary"
-              onPress={() => navigation.replace("Capture")}
+              onPress={() => navigation.replace("Sports")}
             />
           )}
           {stage === "analysis" && !error && !failed && (
@@ -272,19 +277,31 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: colors.surface,
-    borderRadius: 20,
+    borderRadius: 28,
     padding: 24,
     gap: 22,
+    shadowColor: "#281950",
+    shadowOpacity: 0.05,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 2,
   },
   title: {
-    fontSize: 24,
-    fontWeight: "700",
+    fontFamily: "Fraunces_500Medium",
+    fontSize: 29,
+    letterSpacing: -0.5,
     color: colors.text.primary,
     textAlign: "center",
   },
-  text: { color: colors.text.secondary, textAlign: "center", lineHeight: 22 },
+  text: {
+    color: colors.text.secondary,
+    fontFamily: "DMSans_400Regular",
+    textAlign: "center",
+    lineHeight: 22,
+  },
   caption: {
     color: colors.text.muted,
+    fontFamily: "DMSans_400Regular",
     fontSize: 13,
     lineHeight: 20,
     textAlign: "center",

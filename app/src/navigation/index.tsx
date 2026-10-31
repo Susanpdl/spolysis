@@ -6,13 +6,30 @@ import { useAuth } from "@/hooks/useAuth";
 import { AuthStack } from "./AuthStack";
 import { MainTabs } from "./MainTabs";
 import { colors } from "@/theme";
+import { useFonts } from "expo-font";
+import {
+  Fraunces_500Medium,
+  Fraunces_600SemiBold,
+} from "@expo-google-fonts/fraunces";
+import {
+  DMSans_400Regular,
+  DMSans_600SemiBold,
+  DMSans_700Bold,
+} from "@expo-google-fonts/dm-sans";
 
 const Root = createNativeStackNavigator();
 
 export function RootNavigator() {
   const { isAuthenticated, isLoading } = useAuth();
+  const [fontsLoaded, fontError] = useFonts({
+    Fraunces_500Medium,
+    Fraunces_600SemiBold,
+    DMSans_400Regular,
+    DMSans_600SemiBold,
+    DMSans_700Bold,
+  });
 
-  if (isLoading) {
+  if (isLoading || (!fontsLoaded && !fontError)) {
     return (
       <View
         style={{

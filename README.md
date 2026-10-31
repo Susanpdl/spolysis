@@ -1,7 +1,8 @@
 # Spolysis
 
-Spolysis is a tennis motion app focused entirely on 3D analysis.
-Choose a stroke and handedness, record or import a video, and review a suggested correction on your own motion.
+Spolysis is a sports motion analysis app, with tennis as its first supported sport.
+Choose a sport, record or import a video, and review your movement and suggested corrections.
+Table tennis, soccer, and basketball are visible as placeholders and do not submit analyses yet.
 The app includes analysis history, video playback and sharing, joint-angle comparisons, and a rotatable 3D viewer with playback and scrubbing.
 
 Image keypoints remain an internal input to monocular 3D reconstruction.
@@ -37,6 +38,16 @@ The GPU path uses RTMPose-x, pretrained MotionBERT, Savitzky-Golay smoothing, ph
 It analyzes the strongest swing with up to 1.5 seconds of context on either side.
 Feedback is generated from measured differences using deterministic templates.
 The on-device framing check uses Apple Vision on iOS and ML Kit on Android.
+The app's sport catalog and sport-specific movement definitions live under `app/src/sports`.
+Only the tennis track is connected to the current API and analysis pipeline.
+Adding a sport requires its own movement definitions, data and evaluation, and backend analysis contract before enabling its card.
+
+## Adding a sport
+
+Add the sport's definition in its own module under `app/src/sports`, then register it in `app/src/sports/catalog.ts`.
+The catalog drives the sport chooser and the active tennis movement choices.
+Keep a sport marked unavailable until its upload and result schema, analysis stages, reference data, and validation are ready.
+The current API stores tennis movement types without a sport identifier, so a future backend rollout needs a coordinated API and database change before saving other sports' analyses.
 
 Future improvements and their tradeoffs are collected in [v2 options](v2.md).
 They are proposals awaiting a product decision, not a committed roadmap.
@@ -132,9 +143,10 @@ Keep Metro running while using the development app.
 
 1. Tap **Get Started** on the welcome screen to create an account, confirm your email if required, and sign in.
 2. On the empty analyses screen, tap **Start your first analysis**.
-3. Choose your stroke type and playing hand, then record or import a video with your full body and racket in view.
-4. Wait for the upload and analysis to finish.
-5. Review the correction overlay, rotate and scrub the 3D viewer, and compare the suggested changes.
+3. Choose Tennis, then choose your stroke type and playing hand.
+4. Record or import a video with your full body and racket in view.
+5. Wait for the upload and analysis to finish.
+6. Review the correction overlay, rotate and scrub the 3D viewer, and compare the suggested changes.
 
 If you need to check the UI without working backend services, follow the isolated fixture instructions in [Native UI checks](app/e2e/README.md).
 The fixture is for development only and does not validate production sign-in or reconstruction accuracy.

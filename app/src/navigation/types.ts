@@ -1,5 +1,6 @@
 import type { NavigatorScreenParams } from "@react-navigation/native";
 import type { StrokeType } from "@/services/api";
+import type { SportId } from "@/sports/catalog";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 export type AuthStackParams = {
@@ -15,13 +16,15 @@ export type MainTabParams = {
 };
 
 export type RecordingStackParams = {
-  Capture: undefined;
+  Sports: undefined;
+  Capture: { sportId: SportId };
   UploadProgress: {
     videoUri?: string;
     jobId?: string;
     strokeType?: StrokeType;
     handedness?: "right" | "left";
     contentType?: string;
+    sportId?: SportId;
   };
   Result: { jobId: string };
 };

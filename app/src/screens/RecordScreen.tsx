@@ -19,16 +19,21 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import { RecordingScreenProps } from "@/navigation/types";
 import { BodyOutline } from "@/components/BodyOutline";
+import { CharacterPortrait } from "@/components/CharacterPortrait";
 import { Button } from "@/components/Button";
 import { useLivePose } from "@/hooks/useLivePose";
 import { usePoseValidation } from "@/hooks/usePoseValidation";
 import { StrokeType } from "@/services/api";
+import { getSport } from "@/sports/catalog";
 import { colors, spacing } from "@/theme";
 
 type Phase = "preview" | "countdown" | "recording" | "stopping";
 export default function RecordScreen({
+  route,
   navigation,
 }: RecordingScreenProps<"Capture">) {
+  const sport = getSport(route.params.sportId);
+  const strokes = sport.strokes ?? [];
   const { hasPermission, requestPermission } = useCameraPermission();
   const device = useCameraDevice("back");
   const focused = useIsFocused();
@@ -97,6 +102,7 @@ export default function RecordScreen({
             videoUri: `file://${video.path}`,
             strokeType,
             handedness,
+            sportId: sport.id,
             contentType: "video/mp4",
           });
         },
@@ -116,6 +122,7 @@ export default function RecordScreen({
     active,
     strokeType,
     handedness,
+    sport.id,
     navigation,
     setRecordingPhase,
   ]);
@@ -170,6 +177,7 @@ export default function RecordScreen({
         videoUri: asset.uri,
         strokeType,
         handedness,
+        sportId: sport.id,
         contentType:
           asset.mimeType === "video/quicktime"
             ? "video/quicktime"
@@ -184,34 +192,60 @@ export default function RecordScreen({
   return (
     <SafeAreaView style={styles.page}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>Your next better stroke</Text>
-        <Text style={styles.subtitle}>
-          Record one clear swing. Review your motion in 3D.
+        <View style={styles.sportRow}>
+          <Text style={styles.sportLabel}>
+            {sport.name.toUpperCase()} ANALYSIS
+          </Text>
+          <TouchableOpacity
+            accessibilityRole="button"
+            disabled={phase !== "preview"}
+            onPress={() => navigation.goBack()}
+          >
+            <Text
+              style={[
+                styles.changeSport,
+                phase !== "preview" && styles.disabledText,
+              ]}
+            >
+              Change sport
+            </Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.title}>
+          Your next {sport.name.toLowerCase()} analysis
         </Text>
+        <Text style={styles.subtitle}>
+          Capture one clear stroke. Review your movement in 3D.
+        </Text>
+        <Text style={styles.sectionLabel}>CHOOSE A STROKE</Text>
         <View style={styles.options}>
-          {(["forehand", "backhand", "serve", "volley"] as StrokeType[]).map(
-            (stroke) => (
-              <TouchableOpacity
-                accessibilityRole="button"
-                accessibilityState={{
-                  selected: strokeType === stroke,
-                  disabled: phase !== "preview",
-                }}
-                disabled={phase !== "preview"}
-                key={stroke}
-                onPress={() => setStroke(stroke)}
+          {strokes.map((stroke) => (
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityState={{
+                selected: strokeType === stroke.id,
+                disabled: phase !== "preview",
+              }}
+              disabled={phase !== "preview"}
+              key={stroke.id}
+              onPress={() => setStroke(stroke.id as StrokeType)}
+              style={[
+                styles.choice,
+                strokeType === stroke.id && styles.selected,
+              ]}
+            >
+              <Text
                 style={[
-                  styles.choice,
-                  strokeType === stroke && styles.selected,
+                  styles.choiceText,
+                  strokeType === stroke.id && styles.selectedChoiceText,
                 ]}
               >
-                <Text style={styles.choiceText}>
-                  {stroke[0].toUpperCase() + stroke.slice(1)}
-                </Text>
-              </TouchableOpacity>
-            ),
-          )}
+                {stroke.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
+        <Text style={styles.sectionLabel}>PLAYING HAND</Text>
         <View style={styles.options}>
           {(["right", "left"] as const).map((hand) => (
             <TouchableOpacity
@@ -222,7 +256,12 @@ export default function RecordScreen({
               style={[styles.choice, handedness === hand && styles.selected]}
               onPress={() => setHand(hand)}
             >
-              <Text style={styles.choiceText}>
+              <Text
+                style={[
+                  styles.choiceText,
+                  handedness === hand && styles.selectedChoiceText,
+                ]}
+              >
                 {hand === "right" ? "Right-handed" : "Left-handed"}
               </Text>
             </TouchableOpacity>
@@ -268,7 +307,7 @@ export default function RecordScreen({
                   ? "Set up your camera"
                   : cameraError
                     ? "Camera unavailable"
-                    : "Import a tennis video"}
+                    : `Import a ${sport.name.toLowerCase()} video`}
               </Text>
               <Text style={styles.subtitle}>
                 {!hasPermission
@@ -287,11 +326,16 @@ export default function RecordScreen({
             </View>
           )}
         </View>
-        <Text style={styles.hint}>
-          Keep your head, racket hand and feet in frame. Use a steady camera,
-          good light and a slight side view. We analyse the clearest swing in
-          your clip.
-        </Text>
+        <View style={styles.frameGuide}>
+          <CharacterPortrait character="patch" size={68} />
+          <View style={styles.frameGuideCopy}>
+            <Text style={styles.frameGuideTitle}>Patch's framing check</Text>
+            <Text style={styles.hint}>
+              Keep your head, racket hand and feet in frame. Use a steady
+              camera, good light and a slight side view.
+            </Text>
+          </View>
+        </View>
         {cameraVisible && (
           <Button
             title={
@@ -301,7 +345,7 @@ export default function RecordScreen({
                   ? `Starting in ${count}...`
                   : phase === "stopping"
                     ? "Saving recording..."
-                    : "Record stroke"
+                    : `Record ${sport.name.toLowerCase()} stroke`
             }
             disabled={phase === "preview" ? !ready : phase !== "recording"}
             onPress={() => {
@@ -329,26 +373,69 @@ export default function RecordScreen({
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.lg, gap: 16 },
-  title: { color: colors.text.primary, fontSize: 26, fontWeight: "700" },
-  subtitle: { color: colors.text.secondary, lineHeight: 22 },
+  sportRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  sportLabel: {
+    color: colors.primary,
+    fontFamily: "DMSans_700Bold",
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 1,
+  },
+  changeSport: {
+    color: colors.primary,
+    fontFamily: "DMSans_600SemiBold",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  disabledText: { opacity: 0.5 },
+  title: {
+    color: colors.text.primary,
+    fontFamily: "Fraunces_500Medium",
+    fontSize: 32,
+    letterSpacing: -0.6,
+  },
+  subtitle: {
+    color: colors.text.secondary,
+    fontFamily: "DMSans_400Regular",
+    lineHeight: 22,
+  },
+  sectionLabel: {
+    color: colors.text.muted,
+    fontFamily: "DMSans_700Bold",
+    fontSize: 10,
+    letterSpacing: 0.8,
+    marginBottom: -8,
+  },
   options: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
   choice: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 20,
+    paddingVertical: 11,
+    paddingHorizontal: 16,
+    borderRadius: 999,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.surfaceElevated,
+    backgroundColor: colors.surface,
   },
   selected: {
-    backgroundColor: colors.primaryMuted,
+    backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
-  choiceText: { color: colors.text.primary, fontSize: 13 },
+  choiceText: {
+    color: colors.text.primary,
+    fontFamily: "DMSans_700Bold",
+    fontSize: 13,
+  },
+  selectedChoiceText: { color: colors.text.inverse },
   preview: {
     height: 380,
-    borderRadius: 20,
+    borderRadius: 28,
     overflow: "hidden",
     backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.surfaceElevated,
   },
   previewEmpty: { height: 220 },
   outline: {
@@ -362,11 +449,44 @@ const styles = StyleSheet.create({
     left: 12,
     right: 12,
     padding: 12,
-    backgroundColor: "#102018dd",
-    borderRadius: 12,
+    backgroundColor: "rgba(25,16,52,0.82)",
+    borderRadius: 18,
   },
-  statusText: { color: "#fff", textAlign: "center", fontWeight: "600" },
-  cameraEmpty: { flex: 1, justifyContent: "center", padding: 24, gap: 18 },
-  emptyTitle: { color: colors.text.primary, fontSize: 22, fontWeight: "600" },
-  hint: { color: colors.text.muted, fontSize: 12, lineHeight: 18 },
+  statusText: {
+    color: "#fff",
+    textAlign: "center",
+    fontFamily: "DMSans_600SemiBold",
+  },
+  cameraEmpty: {
+    flex: 1,
+    justifyContent: "center",
+    padding: 24,
+    gap: 18,
+    backgroundColor: colors.surface,
+  },
+  emptyTitle: {
+    color: colors.text.primary,
+    fontFamily: "Fraunces_500Medium",
+    fontSize: 24,
+  },
+  hint: {
+    color: colors.text.secondary,
+    fontFamily: "DMSans_400Regular",
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  frameGuide: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 12,
+    borderRadius: 22,
+    backgroundColor: "#E6F3EE",
+  },
+  frameGuideCopy: { flex: 1, gap: 4 },
+  frameGuideTitle: {
+    color: colors.text.primary,
+    fontFamily: "DMSans_700Bold",
+    fontSize: 14,
+  },
 });

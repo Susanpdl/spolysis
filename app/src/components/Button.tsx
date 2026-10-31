@@ -66,22 +66,26 @@ export function Button({
 
 const styles = StyleSheet.create({
   base: {
-    borderRadius: 12,
+    borderRadius: 999,
     paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.xl,
     alignItems: "center",
     justifyContent: "center",
     minHeight: 52,
   },
   primary: { backgroundColor: colors.primary },
   secondary: {
-    backgroundColor: colors.surfaceElevated,
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
   },
   ghost: { backgroundColor: "transparent" },
   disabled: { opacity: 0.4 },
-  text: { ...typography.body, fontWeight: "600" },
+  text: {
+    ...typography.body,
+    fontFamily: "DMSans_700Bold",
+    fontWeight: "700",
+  },
   primaryText: { color: colors.text.inverse },
   secondaryText: { color: colors.text.primary },
   ghostText: { color: colors.primary },

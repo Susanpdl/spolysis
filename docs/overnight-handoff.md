@@ -359,3 +359,17 @@ Storage checks add HEAD requests and cannot guarantee an object will remain avai
 No production service was contacted or changed, and no background process was started.
 Captain verification remains required for the live Fly worker, private R2 configuration, migrations 001-004, a real signed-in job, and the tennis-analysis Temporal poller.
 Other ranked local work remains open; this iteration does not satisfy the full run stop condition.
+
+## Continuation bfd94b iteration 3: upload URL lifetime
+
+Protected HTTP issuance with real local SigV4 signing reproduced a 300-second expiry for both MP4 and MOV upload URLs.
+The first baseline request omitted the required stroke type and returned 422; corrected requests reproduced the expiry contract.
+The default upload URL lifetime is now 3600 seconds, providing a longer window for starting or retrying large transfers on slow connections.
+Signed content-type binding, per-job object keys, ownership, pending status, and confirmation-time size/type validation remain intact.
+Verification: all 59 Python tests pass, including existing oversized/empty/unsupported-upload rejection cases; Ruff and changed-file formatting pass.
+These checks use dummy signing credentials and isolated database adapters without contacting storage.
+They establish signed URL lifetime, not whether R2 interrupts an already-started PUT at expiry or whether a physical cellular upload succeeds.
+The longer lifetime also extends the validity of the private upload capability to one hour.
+No app files changed, no background process was started, and no commit or deployment was made.
+Ranked local work remains, including analyzed-window clarity, import/recovery/privacy guidance, completion notification safety, workflow timeouts, and public endpoint hardening.
+Captain verification remains required for the live Fly worker, private R2 configuration, migrations 001-004, a real signed-in job, and the tennis-analysis Temporal poller.

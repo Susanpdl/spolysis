@@ -26,8 +26,9 @@ def get_r2_client():
 
 
 def generate_upload_url(
-    r2_key: str, content_type: str = "video/mp4", expires_in: int = 300
+    r2_key: str, content_type: str = "video/mp4", expires_in: int = 3600
 ) -> str:
+    # Allow a longer upload/retry window for large clips on slow connections.
     client = get_r2_client()
     url = client.generate_presigned_url(
         "put_object",

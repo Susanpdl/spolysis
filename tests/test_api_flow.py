@@ -558,3 +558,42 @@ def test_result_storage_failure_and_recovery(client, monkeypatch, failure, artif
     assert response.status_code == 200, response.text
     assert response.json()["overlay_video_url"] == "https://private.example/signed"
     assert response.json()["skeleton_3d_url"] == "https://private.example/signed"
+
+
+@pytest.mark.parametrize("content_type", ["video/mp4", "video/quicktime"])
+def test_upload_url_allows_one_hour_before_expiry(client, monkeypatch, content_type):
+    """Exercise HTTP issuance with real local SigV4 signing, without contacting R2."""
+    from urllib.parse import parse_qs, urlparse
+
+    import boto3
+    from botocore.config import Config
+
+    c, db = client
+    storage = boto3.client(
+        "s3",
+        endpoint_url="https://storage.example.test",
+        aws_access_key_id="test-access-key",
+        aws_secret_access_key="test-secret-key",
+        region_name="auto",
+        config=Config(signature_version="s3v4"),
+    )
+    monkeypatch.setattr(r2, "get_r2_client", lambda: storage)
+    monkeypatch.setattr(uploads, "generate_upload_url", r2.generate_upload_url)
+    response = c.post(
+        "/uploads/url",
+        json={
+            "filename": "stroke.mp4",
+            "content_type": content_type,
+            "stroke_type": "forehand",
+        },
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    signed = urlparse(body["upload_url"])
+    query = parse_qs(signed.query)
+    assert query["X-Amz-Expires"] == ["3600"]
+    assert "content-type" in query["X-Amz-SignedHeaders"][0]
+    assert signed.path.endswith(f"/raw/{body['job_id']}/video.mp4")
+    assert db.rows["jobs"][0]["user_id"] == "alice"
+    assert db.rows["jobs"][0]["status"] == "pending"
+    uploads.start_analysis_workflow.assert_not_awaited()

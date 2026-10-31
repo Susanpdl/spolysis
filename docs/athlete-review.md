@@ -157,3 +157,11 @@ Result fetch now verifies nonempty stored artifacts before issuing private links
 Ownership is checked before any storage access; the completed job remains completed so the athlete can retry loading its result.
 All 57 Python tests and Ruff pass, including overlay and skeleton failure/recovery checks and unauthorized access without storage calls.
 These are isolated HTTP/storage-adapter checks, not production R2 or native UI validation.
+
+## Continuation upload lifetime
+
+Continuation run bfd94b iteration 3 increases private upload URL validity from five minutes to one hour for the supported MP4 and MOV flows.
+HTTP issuance tests use real local signing and preserve pending-job ownership and signed content-type binding.
+All 59 Python tests and Ruff pass, including existing confirmation-time size and file-type rejection checks.
+This validates the URL contract without production storage access; it does not establish cellular transfer reliability or in-flight expiry behavior.
+Physical-device transfer interruption and app-termination recovery remain unverified.

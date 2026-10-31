@@ -108,6 +108,7 @@ async def get_job_result(job_id: str, user: dict = Depends(get_current_user)):
         stroke_type=r["stroke_type"],
         fault_label=r.get("fault_label"),
         fault_phase=r.get("fault_phase"),
+        fault_phases=r.get("fault_phases"),
         confidence=r["confidence"],
         recommendation=r["recommendation"],
         reference_clip_url=r.get("reference_clip_url"),

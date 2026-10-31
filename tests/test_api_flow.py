@@ -159,7 +159,9 @@ def test_3d_http_lifecycle_and_duplicate_completion(client):
     assert len(db.rows["results"]) == 1
     response = c.get(f"/jobs/{job}/result")
     assert response.status_code == 200, response.text
-    assert "?signed=1" in response.json()["overlay_video_url"]
+    body = response.json()
+    assert "?signed=1" in body["overlay_video_url"]
+    assert body.get("fault_phases") is None
     assert c.get(f"/jobs/{job}").json()["status"] == "completed"
     for path, body in [
         ("processing", {}),
@@ -653,6 +655,45 @@ def test_saved_result_survives_completion_status_failure(client, monkeypatch):
         == 200
     )
     assert c.get(f"/jobs/{job}/result").status_code == 200
+
+
+def test_result_keeps_secondary_fault_phase_off_the_primary(client):
+    c, _ = client
+    job = create(c)
+    headers = {"Authorization": f"Bearer {settings.internal_api_secret}"}
+    payload = {
+        "stroke_type": "forehand",
+        "fault_label": "right_knee",
+        "fault_phase": "preparation",
+        "fault_phases": {
+            "right_knee": "preparation",
+            "right_elbow": "contact",
+        },
+        "confidence": 0.85,
+        "recommendation": (
+            "During preparation, your hitting-side leg angle is about 50 degrees "
+            "smaller than this reference."
+        ),
+        "overlay_video_url": f"results/{job}/overlay.mp4",
+        "skeleton_3d_url": f"results/{job}/skeleton_3d.json",
+        "delta_summary": {"right_elbow": 25},
+        "fault_joints": ["right_knee", "right_elbow"],
+    }
+    assert (
+        c.post(
+            f"/internal/jobs/{job}/complete_premium", json=payload, headers=headers
+        ).status_code
+        == 200
+    )
+    body = c.get(f"/jobs/{job}/result").json()
+    assert body["fault_phase"] == "preparation"
+    assert body["fault_joints"] == ["right_knee", "right_elbow"]
+    assert body["fault_phases"]["right_knee"] == "preparation"
+    assert body["fault_phases"]["right_elbow"] == "contact"
+    assert body["fault_phases"]["right_elbow"] != body["fault_phase"]
+    assert "preparation" in body["recommendation"].lower()
+    assert "hitting arm" not in body["recommendation"].lower()
+    assert "elbow" not in body["recommendation"].lower()
 
 
 @pytest.mark.parametrize("path", ["/docs", "/redoc", "/openapi.json"])

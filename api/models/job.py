@@ -40,6 +40,7 @@ class JobPremiumCompleteRequest(BaseModel):
     stroke_type: str
     fault_label: str | None = None
     fault_phase: str | None = None
+    fault_phases: dict[str, str] | None = None
     confidence: float = Field(ge=0, le=1)
     recommendation: str
     overlay_video_url: str

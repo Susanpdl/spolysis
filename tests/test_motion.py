@@ -6,7 +6,14 @@ from pipeline.runner import mirror_pose
 from pipeline.stages.normalize3d import normalize_skeleton, _BONE_PAIRS
 from pipeline.stages.phases import StrokePhases, detect_phases
 from pipeline.stages.align import align_to_reference
-from pipeline.stages.delta import compute_deltas, DeltaTable, JointDelta, angle_3d
+from pipeline.stages.delta import (
+    compute_deltas,
+    DeltaTable,
+    JointDelta,
+    angle_3d,
+    _select_joint_peak_phases,
+    _select_primary_finding,
+)
 from pipeline.stages.ik import apply_ik_correction
 from pipeline.stages.recommend import recommend_3d
 
@@ -204,6 +211,8 @@ def test_primary_finding_is_largest_threshold_crossing_pair(motion_sequence):
     assert table.primary.phase == "preparation"
     assert table.fault_joints[0] == "right_knee"
     assert "right_elbow" in table.fault_joints
+    assert table.fault_phases["right_knee"] == "preparation"
+    assert table.fault_phases["right_elbow"] == "contact"
     start, end = table.fault_frames
     assert start <= 24
     assert end >= 0
@@ -214,8 +223,25 @@ def test_primary_finding_is_largest_threshold_crossing_pair(motion_sequence):
     assert "preparation" in lowered
     assert "hitting-side leg" in lowered or "knee" in lowered
     assert "estimated contact" not in lowered
+    assert "hitting arm" not in lowered
+    assert "elbow" not in lowered
     assert "mm" not in lowered
     assert "clinical" not in lowered
+
+
+def test_secondary_joint_keeps_its_own_peak_phase():
+    deltas = [
+        JointDelta("right_knee", "preparation", 140, 90, -50),
+        JointDelta("right_elbow", "preparation", 112, 90, 22),
+        JointDelta("right_elbow", "contact", 115, 90, 25),
+    ]
+    primary = _select_primary_finding(deltas)
+    phases = _select_joint_peak_phases(deltas)
+    assert primary is not None
+    assert primary.joint == "right_knee"
+    assert primary.phase == "preparation"
+    assert phases["right_knee"] == "preparation"
+    assert phases["right_elbow"] == "contact"
 
 
 def test_service_failure_asks_to_retry_this_clip():

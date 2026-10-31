@@ -155,3 +155,74 @@ def test_ffmpeg_failure_remains_a_service_failure(
             "forehand",
             reference_motion_dir=str(reference_dir),
         )
+
+
+def test_runner_remaps_fault_phase_keys_for_left_handed(
+    tmp_path, monkeypatch, motion_sequence
+):
+    from pipeline.stages.delta import DeltaTable, JointDelta
+
+    motion = motion_sequence
+    reference_dir = tmp_path / "references"
+    reference_dir.mkdir()
+    np.save(reference_dir / "fixture_forehand.npy", motion)
+    _stub_upload_path(monkeypatch, tmp_path, motion_sequence)
+    points = motion.copy()
+    points[..., :2] = motion[..., :2] * [120, -120] + [160, 230]
+    points[:, 9] = points[:, 10]
+    points[..., 2] = 0.95
+    frames = [
+        str(tmp_path / f"{i:04d}.jpg") for i in range(len(motion))
+    ]
+    monkeypatch.setattr(
+        runner,
+        "run_pose_estimation",
+        lambda *a: Pose2DResult(
+            points, frames, np.tile([0, 0, 320, 320], (len(frames), 1))
+        ),
+    )
+    monkeypatch.setattr(runner, "check_quality", lambda *a: QualityResult(True))
+    monkeypatch.setattr(
+        runner,
+        "lift_to_3d",
+        lambda pose, **k: LiftResult(
+            motion[: len(pose.keypoints)].copy(), "test-fixture", 30
+        ),
+    )
+    objects = {}
+    monkeypatch.setattr(
+        runner.r2, "put_json", lambda key, data: objects.__setitem__(key, data)
+    )
+    monkeypatch.setattr(runner.r2, "upload_file", lambda *a, **k: None)
+    monkeypatch.setattr(
+        runner,
+        "render_overlay",
+        lambda *a, **k: Path(a[6]).write_bytes(b"overlay"),
+    )
+    table = DeltaTable(
+        deltas=[
+            JointDelta("right_knee", "preparation", 140, 90, -50),
+            JointDelta("right_elbow", "contact", 115, 90, 25),
+        ],
+        fault_joints=["right_knee", "right_elbow"],
+        fault_frames=(0, 10),
+        stroke_type="forehand",
+        primary=JointDelta("right_knee", "preparation", 140, 90, -50),
+        fault_phases={"right_knee": "preparation", "right_elbow": "contact"},
+    )
+    monkeypatch.setattr(runner, "compute_deltas", lambda *a, **k: table)
+    result = runner.run_analysis(
+        "test-job",
+        "input.mp4",
+        "forehand",
+        handedness="left",
+        reference_motion_dir=str(reference_dir),
+    )
+    assert result["fault_label"] == "left_knee"
+    assert result["fault_phase"] == "preparation"
+    assert result["fault_joints"] == ["left_knee", "left_elbow"]
+    assert result["fault_phases"] == {
+        "left_knee": "preparation",
+        "left_elbow": "contact",
+    }
+    assert result["fault_phases"]["left_elbow"] != result["fault_phase"]

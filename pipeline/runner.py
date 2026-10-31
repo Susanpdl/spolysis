@@ -163,6 +163,10 @@ def run_analysis(
             "stroke_type": stroke_type,
             "fault_label": display_joint(primary.joint) if primary else None,
             "fault_phase": primary.phase if primary else None,
+            "fault_phases": {
+                display_joint(joint): phase
+                for joint, phase in deltas.fault_phases.items()
+            },
             "confidence": confidence,
             "recommendation": recommend_3d(deltas, handedness),
             "overlay_video_url": overlay_key,

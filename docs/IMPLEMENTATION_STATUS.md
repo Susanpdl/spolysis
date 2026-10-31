@@ -95,7 +95,8 @@ The earlier Supabase DNS failure was superseded by user-supplied GoTrue and Fly 
 Those checks establish connectivity only; real authentication, applied migrations, and production signed-in persistence remain unverified.
 Captain access is required to verify these release prerequisites.
 
-The API and worker deployment depends on migrations `api/migrations/001_init.sql` through `api/migrations/004_result_fault_phase.sql` and valid Supabase settings.
+The API and worker deployment depends on migrations `api/migrations/001_init.sql` through `api/migrations/005_result_fault_phases.sql` and valid Supabase settings.
+Apply 004 and 005 before production completions write the new columns.
 The worker also needs Modal credentials in Fly secrets.
 Deploy from the repository root with `fly deploy --config fly.runtime.toml` after those prerequisites are satisfied.
 The existing generated `api/fly.toml` is retained without manual modification.

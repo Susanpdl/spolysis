@@ -408,6 +408,7 @@ export default function ResultScreen({
                 faultJoints={result.fault_joints ?? []}
                 faultLabel={result.fault_label}
                 faultPhase={result.fault_phase}
+                faultPhases={result.fault_phases}
                 handedness={handedness}
               />
             )}

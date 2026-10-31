@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from "react-native";
 import { CharacterPortrait } from "@/components/CharacterPortrait";
 import { colors, spacing, typography } from "@/theme";
 
-type Cue = { title: string; instruction: string; secondary?: boolean };
+export type Cue = { title: string; instruction: string; secondary?: boolean };
 
 const PHASE_PHRASE: Record<string, string> = {
   preparation: "during preparation",
@@ -27,38 +27,47 @@ export function jointRoleLabel(
   return joint.replace(/_/g, " ");
 }
 
-function phasePhrase(phase?: string | null): string {
-  if (!phase) return "during this swing";
+function phasePhrase(phase?: string | null): string | undefined {
+  if (!phase) return undefined;
   return PHASE_PHRASE[phase] ?? phase.replace(/_/g, " ");
 }
 
-function cueForJoint(
+export function cueForJoint(
   joint: string,
   phase: string | null | undefined,
   handedness: "right" | "left",
   secondary: boolean,
 ): Cue {
   const role = jointRoleLabel(joint, handedness);
+  const phaseText = phasePhrase(phase);
+  if (secondary) {
+    const where = phaseText ? ` ${phaseText}` : "";
+    return {
+      title: `Secondary: ${role}`,
+      instruction: `A smaller difference also showed up at the ${role.toLowerCase()}${where}. Use it as extra context, not the main rehearsal.`,
+      secondary: true,
+    };
+  }
   return {
-    title: secondary ? `Secondary: ${role}` : role,
-    instruction: secondary
-      ? `A smaller difference also showed up at the ${role.toLowerCase()}. Use it as extra context, not the main rehearsal.`
-      : `At the violet marker, copy the green model's ${role.toLowerCase()} ${phasePhrase(phase)}. Rehearse it slowly within a comfortable range.`,
-    secondary,
+    title: role,
+    instruction: `At the violet marker, copy the green model's ${role.toLowerCase()} ${phaseText ?? "during this swing"}. Rehearse it slowly within a comfortable range.`,
+    secondary: false,
   };
 }
 
-export function SwingCues({
+export function buildSwingCues({
   faultJoints,
   faultLabel,
   faultPhase,
+  faultPhases,
   handedness = "right",
 }: {
   faultJoints: string[];
   faultLabel?: string | null;
   faultPhase?: string | null;
+  faultPhases?: Record<string, string> | null;
   handedness?: "right" | "left";
-}) {
+}): Cue[] {
   const primaryJoint = faultLabel || faultJoints[0];
   const secondaryJoints = faultJoints.filter((joint) => joint !== primaryJoint);
   const cues: Cue[] = [];
@@ -66,8 +75,32 @@ export function SwingCues({
     cues.push(cueForJoint(primaryJoint, faultPhase, handedness, false));
   }
   for (const joint of secondaryJoints.slice(0, 2)) {
-    cues.push(cueForJoint(joint, faultPhase, handedness, true));
+    const phase = faultPhases?.[joint];
+    cues.push(cueForJoint(joint, phase, handedness, true));
   }
+  return cues;
+}
+
+export function SwingCues({
+  faultJoints,
+  faultLabel,
+  faultPhase,
+  faultPhases,
+  handedness = "right",
+}: {
+  faultJoints: string[];
+  faultLabel?: string | null;
+  faultPhase?: string | null;
+  faultPhases?: Record<string, string> | null;
+  handedness?: "right" | "left";
+}) {
+  const cues = buildSwingCues({
+    faultJoints,
+    faultLabel,
+    faultPhase,
+    faultPhases,
+    handedness,
+  });
   const hasFocus = cues.length > 0;
 
   return (

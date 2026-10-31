@@ -56,6 +56,7 @@ class DeltaTable:
     stroke_type: str = ""
     summary: dict[str, float] = field(default_factory=dict)  # contact-phase deltas
     primary: JointDelta | None = None
+    fault_phases: dict[str, str] = field(default_factory=dict)
 
 
 def angle_3d(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> float:
@@ -209,17 +210,32 @@ def _find_worst_fault_frames(
     return (start, end)
 
 
-def _select_primary_finding(deltas: list[JointDelta]) -> JointDelta | None:
-    """Pick the threshold-crossing (joint, phase) pair with the largest |delta|."""
-    candidates = [
+def _threshold_crossings(deltas: list[JointDelta]) -> list[JointDelta]:
+    """Return (joint, phase) pairs that meet that joint's fault threshold."""
+    return [
         d
         for d in deltas
         if d.joint in _FAULT_THRESHOLDS
         and abs(d.delta_deg) >= _FAULT_THRESHOLDS[d.joint]
     ]
+
+
+def _select_primary_finding(deltas: list[JointDelta]) -> JointDelta | None:
+    """Pick the threshold-crossing (joint, phase) pair with the largest |delta|."""
+    candidates = _threshold_crossings(deltas)
     if not candidates:
         return None
     return max(candidates, key=lambda d: abs(d.delta_deg))
+
+
+def _select_joint_peak_phases(deltas: list[JointDelta]) -> dict[str, str]:
+    """For each threshold-crossing joint, keep the phase with the largest |delta|."""
+    peaks: dict[str, JointDelta] = {}
+    for finding in _threshold_crossings(deltas):
+        current = peaks.get(finding.joint)
+        if current is None or abs(finding.delta_deg) > abs(current.delta_deg):
+            peaks[finding.joint] = finding
+    return {joint: finding.phase for joint, finding in peaks.items()}
 
 
 def compute_deltas(
@@ -286,16 +302,13 @@ def compute_deltas(
                 summary[joint] = round(delta, 2)
 
     # One primary (joint, phase) pair drives the label, recommendation, and IK window.
+    # Each displayed joint also keeps its own peak phase for secondary cues.
     primary = _select_primary_finding(deltas)
+    fault_phases = _select_joint_peak_phases(deltas)
     fault_joints: list[str] = []
     if primary is not None:
         ordered = sorted(
-            (
-                d
-                for d in deltas
-                if d.joint in _FAULT_THRESHOLDS
-                and abs(d.delta_deg) >= _FAULT_THRESHOLDS[d.joint]
-            ),
+            _threshold_crossings(deltas),
             key=lambda d: abs(d.delta_deg),
             reverse=True,
         )
@@ -324,6 +337,7 @@ def compute_deltas(
         "compute_deltas_done",
         num_deltas=len(deltas),
         fault_joints=fault_joints,
+        fault_phases=fault_phases,
         fault_frames=fault_frames,
         contact_summary=summary,
     )
@@ -335,6 +349,7 @@ def compute_deltas(
         stroke_type=stroke_type,
         summary=summary,
         primary=primary,
+        fault_phases=fault_phases,
     )
 
 

@@ -123,6 +123,7 @@ export interface Result {
   stroke_type: "forehand" | "backhand" | "serve" | "volley";
   fault_label?: string;
   fault_phase?: string;
+  fault_phases?: Record<string, string>;
   confidence: number;
   recommendation: string;
   reference_clip_url?: string;

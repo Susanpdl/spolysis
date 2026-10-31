@@ -154,9 +154,11 @@ The fixture is for development only and does not validate production sign-in or 
 
 ## Database and deployment
 
-Apply `api/migrations/001_init.sql`, `002_premium_columns.sql`, `003_3d_analysis.sql`, and `004_result_fault_phase.sql` in order through the Supabase SQL editor or an authenticated Postgres connection.
+Apply `api/migrations/001_init.sql`, `002_premium_columns.sql`, `003_3d_analysis.sql`, `004_result_fault_phase.sql`, and `005_result_fault_phases.sql` in order through the Supabase SQL editor or an authenticated Postgres connection.
 The third migration makes new jobs 3D-only and removes client write access to jobs and results.
 The fourth adds the optional primary-phase label written by current result callbacks; existing results remain readable.
+The fifth adds the optional per-joint phase map used by secondary coaching cues.
+Apply 004 and 005 before production completions write the new columns.
 Keep R2 public access disabled for uploads and result artifacts.
 
 Configure Fly secrets from `.env.example`, plus the workflow worker's `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET`.
@@ -171,7 +173,7 @@ fly deploy --config fly.runtime.toml
 Run these from the repository root after the database migrations succeed.
 `fly.runtime.toml` defines separate API and worker processes.
 The workflow worker must stay running to consume jobs.
-Before release, the captain must verify the live Fly worker, an active poller on the configured `tennis-analysis` queue, migrations 001-004, disabled R2 public access, and one real signed-in analysis through result retrieval.
+Before release, the captain must verify the live Fly worker, an active poller on the configured `tennis-analysis` queue, migrations 001-005, disabled R2 public access, and one real signed-in analysis through result retrieval.
 An API health response alone does not verify these requirements.
 See [Pipeline setup](pipeline/README.md) for model and data details.
 

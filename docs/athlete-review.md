@@ -225,3 +225,14 @@ An isolated execution of the actual viewer load handler reproduces the old behav
 All 72 Python tests, Ruff, TypeScript, ESLint, and the viewer build pass.
 CoreSimulator and browser access remain blocked, so native interaction and visual presentation are unverified.
 The phase is a wrist-motion estimate, not detected ball contact; analyzed-window timing and automatic selection explanation remain follow-up work.
+
+## Continuation account data disclosure
+
+Continuation run e1101d iteration 1 explains cloud upload and analysis, states that sign-out does not delete uploaded videos, results, or the account, and discloses that deletion is unavailable in the app.
+The account screen no longer labels storage "Private by default" while production R2 public-access configuration remains unverified.
+Source review confirms that the app sign-out service only calls Supabase sign-out and the API exposes no recording or account deletion route.
+All 72 Python tests, Ruff, app TypeScript, ESLint, and changed-screen formatting pass.
+The Python suite emits existing Starlette/httpx and gotrue deprecation warnings.
+An attempted native check failed before launch because `xcrun simctl list devices booted` could not connect to CoreSimulatorService and reported Operation not permitted accessing its log.
+No native reproduction, screenshot, layout validation, or production privacy validation is claimed.
+Import guidance, upload navigation protection, analyzed-window copy, secondary cue phases, and the iPhone 17e empty-state visual check remain pending.

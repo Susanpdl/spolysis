@@ -149,3 +149,11 @@ Continuation run bfd94b iteration 1 reproduces Temporal connect/start outages an
 Orchestration outages now return retryable 503 with saved-video reuse guidance; metadata failure after successful workflow acceptance no longer falsely reports that analysis failed to start.
 All 49 Python tests pass, including recovery and processing callbacks without saved workflow metadata; Ruff passes.
 These are isolated service-adapter tests, not native UI or production signed-in validation.
+
+## Continuation result availability
+
+Continuation run bfd94b iteration 2 reproduces completed-result HTTP 200 responses for missing, empty, and unavailable storage artifacts, and HTTP 500 for signing failure.
+Result fetch now verifies nonempty stored artifacts before issuing private links and returns retryable HTTP 503 when media or signing is unavailable.
+Ownership is checked before any storage access; the completed job remains completed so the athlete can retry loading its result.
+All 57 Python tests and Ruff pass, including overlay and skeleton failure/recovery checks and unauthorized access without storage calls.
+These are isolated HTTP/storage-adapter checks, not production R2 or native UI validation.

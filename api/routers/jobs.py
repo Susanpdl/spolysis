@@ -85,16 +85,24 @@ async def get_job_result(job_id: str, user: dict = Depends(get_current_user)):
     if not result.data:
         raise HTTPException(status_code=404, detail="Result not found")
 
-    r = result.data[0]
+    r = dict(result.data[0])
     from api.r2 import generate_download_url
 
     # Return short-lived authenticated links, never public links to user footage.
-    if r.get("overlay_video_url"):
-        r["overlay_video_url"] = generate_download_url(f"results/{job_id}/overlay.mp4")
-    if r.get("skeleton_3d_url"):
-        r["skeleton_3d_url"] = generate_download_url(
-            f"results/{job_id}/skeleton_3d.json"
-        )
+    try:
+        if r.get("overlay_video_url"):
+            r["overlay_video_url"] = generate_download_url(
+                f"results/{job_id}/overlay.mp4"
+            )
+        if r.get("skeleton_3d_url"):
+            r["skeleton_3d_url"] = generate_download_url(
+                f"results/{job_id}/skeleton_3d.json"
+            )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Result media is temporarily unavailable. Please retry loading this result.",
+        ) from exc
     return ResultResponse(
         job_id=r["job_id"],
         stroke_type=r["stroke_type"],

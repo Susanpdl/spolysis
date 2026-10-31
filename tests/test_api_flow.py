@@ -12,6 +12,9 @@ from api.routers import jobs, uploads, internal
 from api.config import settings
 
 
+REAL_DOWNLOAD_URL = r2.generate_download_url
+
+
 class Database:
     def __init__(self):
         self.rows = {"jobs": [], "results": []}
@@ -490,3 +493,68 @@ def test_started_workflow_survives_metadata_write_failure(client, monkeypatch):
     )
     assert c.get(f"/jobs/{job}").json()["status"] == "processing"
     assert "temporal_run_id" not in db.rows["jobs"][0]
+
+
+@pytest.mark.parametrize("failure", ["missing", "empty", "unavailable", "signing"])
+@pytest.mark.parametrize("artifact", ["overlay.mp4", "skeleton_3d.json"])
+def test_result_storage_failure_and_recovery(client, monkeypatch, failure, artifact):
+    c, db = client
+    job = create(c)
+    response = c.post(
+        f"/internal/jobs/{job}/complete_premium",
+        headers={"Authorization": f"Bearer {settings.internal_api_secret}"},
+        json={
+            "stroke_type": "forehand",
+            "confidence": 0.85,
+            "recommendation": "Review your elbow angle.",
+            "overlay_video_url": "overlay",
+            "skeleton_3d_url": "skeleton",
+            "delta_summary": {},
+            "fault_joints": [],
+        },
+    )
+    assert response.status_code == 200
+    storage = Mock()
+    storage.head_object.return_value = {"ContentLength": 100}
+    storage.generate_presigned_url.return_value = "https://private.example/signed"
+    if failure == "missing":
+        storage.head_object.side_effect = ClientError(
+            {"Error": {"Code": "NoSuchKey"}}, "HeadObject"
+        )
+    elif failure == "empty":
+        storage.head_object.return_value = {"ContentLength": 0}
+    elif failure == "unavailable":
+        storage.head_object.side_effect = EndpointConnectionError(
+            endpoint_url="https://storage.example"
+        )
+    else:
+        storage.generate_presigned_url.side_effect = RuntimeError("signing unavailable")
+    failed_head = storage.head_object.side_effect
+    failed_metadata = storage.head_object.return_value
+
+    def head_object(**kwargs):
+        if kwargs["Key"].endswith(artifact):
+            if failed_head:
+                raise failed_head
+            return failed_metadata
+        return {"ContentLength": 100}
+
+    storage.head_object.side_effect = head_object
+    monkeypatch.setattr(r2, "get_r2_client", lambda: storage)
+    monkeypatch.setattr(r2, "generate_download_url", REAL_DOWNLOAD_URL)
+    app.dependency_overrides[get_current_user] = lambda: {"user_id": "bob"}
+    assert c.get(f"/jobs/{job}/result").status_code == 404
+    storage.head_object.assert_not_called()
+    storage.generate_presigned_url.assert_not_called()
+    app.dependency_overrides[get_current_user] = lambda: {"user_id": "alice"}
+    response = c.get(f"/jobs/{job}/result")
+    assert response.status_code == 503, response.text
+    assert "retry" in response.json()["detail"].lower()
+    assert db.rows["jobs"][0]["status"] == "completed"
+    storage.head_object.side_effect = None
+    storage.head_object.return_value = {"ContentLength": 100}
+    storage.generate_presigned_url.side_effect = None
+    response = c.get(f"/jobs/{job}/result")
+    assert response.status_code == 200, response.text
+    assert response.json()["overlay_video_url"] == "https://private.example/signed"
+    assert response.json()["skeleton_3d_url"] == "https://private.example/signed"

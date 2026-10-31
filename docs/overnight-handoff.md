@@ -345,3 +345,17 @@ The suite reports existing Starlette/httpx and GoTrue deprecation warnings.
 No app files changed, no background services were started, and no commit or deployment was made.
 Ranked items 2-5 and 7-9 from the continuation objective remain for later iterations.
 Captain verification remains required for the live Fly worker, private R2 configuration, applied migrations 001-004, a real signed-in job, and the Temporal tennis-analysis poller.
+
+## Continuation bfd94b iteration 2: result availability
+
+The HTTP lifecycle baseline completed a job and then fetched its result with missing, empty, or unavailable storage artifacts.
+All three returned HTTP 200 because presigning did not check object availability; a signing exception returned HTTP 500.
+The initial test setup omitted required callback fields and returned 422; the corrected baseline included those fields before reproducing the defects.
+Download signing now checks object existence and nonzero length, and the result endpoint maps media/signing failures to retryable HTTP 503 without changing job status.
+Canonical per-job object keys, ownership gating, private signed URLs, and optional historical media fields remain compatible.
+Verification: `.venv-test/bin/python -m pytest -q` passes 57 tests; `.venv-test/bin/python -m ruff check api pipeline tests` passes.
+The tests cover both artifact paths, storage recovery, and unauthorized requests issuing no storage calls.
+Storage checks add HEAD requests and cannot guarantee an object will remain available after a URL is returned.
+No production service was contacted or changed, and no background process was started.
+Captain verification remains required for the live Fly worker, private R2 configuration, migrations 001-004, a real signed-in job, and the tennis-analysis Temporal poller.
+Other ranked local work remains open; this iteration does not satisfy the full run stop condition.

@@ -235,7 +235,8 @@ All 72 Python tests, Ruff, app TypeScript, ESLint, and changed-screen formatting
 The Python suite emits existing Starlette/httpx and gotrue deprecation warnings.
 An attempted native check failed before launch because `xcrun simctl list devices booted` could not connect to CoreSimulatorService and reported Operation not permitted accessing its log.
 No native reproduction, screenshot, layout validation, or production privacy validation is claimed.
-Import guidance and upload navigation protection were added later; secondary cue phases and the iPhone 17e empty-state visual check remain pending.
+Import guidance and upload navigation protection were added later.
+The iPhone 17e empty-home layout check is recorded below.
 
 ## Continuation analyzed-window copy
 
@@ -246,4 +247,9 @@ No `start_frame` field was added to the public result schema, and viewer seek lo
 This is copy-only; it does not change swing selection, reconstruction, or seek behavior.
 App TypeScript and ESLint are the recorded checks for this slice.
 CoreSimulator remains inaccessible here, so native layout, VoiceOver, and screenshot validation are not claimed.
-Secondary cue phases and the iPhone 17e empty-state visual check remain pending.
+
+## iPhone 17e empty-home layout
+
+On iPhone 17e at default Dynamic Type, the signed-in empty-home Choose a sport control is above the fold at 390x844.
+At extra-extra-large Dynamic Type, body copy still scaled, number badges did not shrink, and Choose a sport stayed tappable without overflowing the card.
+These screenshots used fixture auth and worktree Metro 8082, not production sign-in.

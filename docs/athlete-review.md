@@ -207,3 +207,12 @@ Analysis activity failure requests retrying the same clip; a result-delivery fai
 No real Temporal timeout or native UI behavior was exercised.
 A completely absent worker cannot deliver any status callback, and workflow execution timeout alone does not change the athlete's database status.
 Live worker and poller verification and stranded-job recovery remain captain responsibilities.
+
+## Continuation history failure reasons
+
+Continuation run bfd94b iteration 9 exposes saved rejection and service-failure reasons directly in history rows and their accessibility labels.
+The reason occupies the card width below the summary and is not truncated; completed and active jobs do not display stale failure text.
+A local render probe reproduced the missing reason before the change and passes afterward, including missing-reason compatibility.
+The native selected-rejection test now asserts the history button's reason before navigating, and the simulator test target builds successfully.
+All 72 Python tests, Ruff, TypeScript, ESLint, and changed-screen formatting pass.
+CoreSimulator remains inaccessible in this sandbox, so these checks do not establish native layout, VoiceOver behavior, or a runtime UI-test pass.

@@ -457,3 +457,22 @@ If the worker is entirely absent, it cannot run workflow failure handling or del
 Captain verification of the live Fly worker and tennis-analysis poller, and operational recovery of stranded jobs, remain required.
 Reliable database reconciliation independent of that worker would require a separately chosen structural change; this slice does not introduce another service.
 Analyzed-window clarity and capture/recovery/privacy guidance remain local follow-up work.
+
+## Continuation bfd94b iteration 9 - history failure reasons
+
+The local render baseline for a rejected history job failed because HomeScreen omitted its saved rejection_reason entirely.
+History now displays rejection and failure reasons across the card width below the existing summary, with the same reason included in the button accessibility label.
+Completed and active jobs suppress stale reasons, and historical jobs without a reason retain their existing row.
+The render probe uses mocked React Native and query/navigation adapters; it is not a native end-to-end test or visual verification.
+Probe: `/tmp/check-history.cjs`; it passes the rejected/failed, active/completed, and missing-reason cases after the change.
+The existing selected-rejection native check now requires the reason in the history button label before opening the job.
+
+Validation: all 72 Python tests, Ruff, app TypeScript, ESLint, HomeScreen Prettier, and diff checks pass.
+The generated native project builds for testing with the same generic simulator command as iteration 7, using derived data `/tmp/spolysis-bfd94b-9-build`.
+Build log: `/tmp/spolysis-bfd94b-9-build.log`, ending in TEST BUILD SUCCEEDED.
+`xcrun simctl list devices booted` still fails with CoreSimulator connection refused and Operation not permitted; no runtime test or screenshot is claimed.
+All started build processes exited; no background services, commits, production writes, or orchestrator-note edits were made.
+
+Analyzed-window clarity, import checklist, upload leave-guard, and privacy guidance remain local work.
+Captain verification still requires the live Fly worker, tennis-analysis poller, private R2 configuration, migrations 001-004, and one real signed-in job.
+The full run stop condition is not met.

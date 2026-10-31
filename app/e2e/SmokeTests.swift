@@ -308,6 +308,7 @@ final class ResultRecoveryTests: XCTestCase {
     app.buttons["Back to analyses"].tap()
     let other = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Open analysis from'")).element(boundBy: 1)
     XCTAssertTrue(other.waitForExistence(timeout: 10))
+    XCTAssertTrue(other.label.contains("Your feet are out of frame. Record with your full body visible."), "History must announce the saved rejection reason before opening the analysis")
     other.tap()
     let rejected = app.staticTexts["Your feet are out of frame. Record with your full body visible."]
     let visible = rejected.waitForExistence(timeout: 15)

@@ -136,8 +136,7 @@ export default function HomeScreen() {
                     Make every swing count.
                   </Text>
                   <Text style={styles.heroDescription}>
-                    See your movement clearly. Find one useful thing to work
-                    on.
+                    See your movement clearly. Find one useful thing to work on.
                   </Text>
                   <Button
                     title="Start an analysis"
@@ -254,35 +253,42 @@ export default function HomeScreen() {
         renderItem={({ item, index }) => (
           <TouchableOpacity
             accessibilityRole="button"
-            accessibilityLabel={`Open analysis from ${new Date(item.created_at).toLocaleDateString()}`}
+            accessibilityLabel={`Open analysis from ${new Date(item.created_at).toLocaleDateString()}${(item.status === "rejected" || item.status === "failed") && item.rejection_reason ? `. ${item.rejection_reason}` : ""}`}
             onPress={() => open(item)}
             activeOpacity={0.78}
             style={styles.sessionCard}
           >
-            <View
-              style={[
-                styles.sessionIcon,
-                {
-                  backgroundColor: PLAYER_COLORS[index % PLAYER_COLORS.length],
-                },
-              ]}
-            >
-              <Text style={styles.sessionIconText}>🎾</Text>
+            <View style={styles.sessionSummary}>
+              <View
+                style={[
+                  styles.sessionIcon,
+                  {
+                    backgroundColor:
+                      PLAYER_COLORS[index % PLAYER_COLORS.length],
+                  },
+                ]}
+              >
+                <Text style={styles.sessionIconText}>🎾</Text>
+              </View>
+              <View style={styles.sessionBody}>
+                <Text style={styles.sessionTitle}>Tennis practice</Text>
+                <Text style={styles.sessionDate}>
+                  {new Date(item.created_at).toLocaleDateString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  })}
+                </Text>
+              </View>
+              <View style={styles.sessionMeta}>
+                <JobStatusBadge status={item.status} />
+                <Text style={styles.sessionChevron}>›</Text>
+              </View>
             </View>
-            <View style={styles.sessionBody}>
-              <Text style={styles.sessionTitle}>Tennis practice</Text>
-              <Text style={styles.sessionDate}>
-                {new Date(item.created_at).toLocaleDateString(undefined, {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                })}
-              </Text>
-            </View>
-            <View style={styles.sessionMeta}>
-              <JobStatusBadge status={item.status} />
-              <Text style={styles.sessionChevron}>›</Text>
-            </View>
+            {(item.status === "rejected" || item.status === "failed") &&
+            item.rejection_reason ? (
+              <Text style={styles.sessionReason}>{item.rejection_reason}</Text>
+            ) : null}
           </TouchableOpacity>
         )}
       />
@@ -440,14 +446,23 @@ const styles = StyleSheet.create({
     paddingRight: 13,
     borderRadius: 22,
     backgroundColor: colors.surface,
-    flexDirection: "row",
-    alignItems: "center",
     gap: spacing.sm,
     shadowColor: "#281950",
     shadowOpacity: 0.035,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
     elevation: 1,
+  },
+  sessionSummary: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  sessionReason: {
+    color: colors.text.secondary,
+    fontFamily: "DMSans_400Regular",
+    fontSize: 13,
+    lineHeight: 19,
   },
   sessionIcon: {
     width: 52,
